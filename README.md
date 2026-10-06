@@ -1,5 +1,11 @@
 # Songbrain
 
+[![CI](https://github.com/songbrain-ai/songbrain/actions/workflows/ci.yml/badge.svg)](https://github.com/songbrain-ai/songbrain/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/songbrain?label=pypi)](https://pypi.org/project/songbrain/)
+[![npm](https://img.shields.io/npm/v/songbrain)](https://www.npmjs.com/package/songbrain)
+[![MCP Registry](https://img.shields.io/badge/MCP%20Registry-io.github.songbrain--ai%2Fsongbrain-6e56cf)](https://registry.modelcontextprotocol.io/v0/servers?search=io.github.songbrain-ai/songbrain)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
 **Song in, video plan out — the music analysis API for AI video.**
 
 Send a song. Get back JSON that a video model can use directly: what the song is, where the beats and sections are, which part to use, what the words are and when they are sung, what the video should show, and a shot list with a prompt for every scene that cuts on the beat.
@@ -9,6 +15,7 @@ This repository holds the official SDKs for Python and JavaScript/TypeScript, ex
 - API docs: https://www.songbrain.ai/docs/api
 - OpenAPI: https://api.songbrain.ai/v1/openapi.json
 - Get a key (5 free songs a month): https://app.songbrain.ai/developers
+- Changelog: [SDKs](CHANGELOG.md) · [API](https://www.songbrain.ai/docs/api/changelog)
 
 ## Try it now, no key
 
@@ -26,7 +33,7 @@ One document per song (schema `songbrain.song/1`). Times are seconds from the st
 |---|---|
 | `song_dna` | Genre and subgenre (37 subgenres), tempo, key and key changes, mood, vocal style, instruments, energy, loudness (LUFS, true peak, per-platform check), a tagline and similar tracks |
 | `timeline` | Every beat, every downbeat, time signature, sections with repeat letters (A, B, A) and energy, vocal changes, lyric hooks |
-| `best_moments` | Ranked windows with start, peak and end, a score, why they work, platform fit (TikTok, Reels, Shorts), the beats inside, the words sung |
+| `best_moments` | Ranked windows with start, peak and end, a score, the reason they work and the measured signals behind it, the beats inside, the words sung |
 | `lyrics` | Lines with start and end, and every word with its own start and end |
 | `scores` | Virality, quality and lyrics scores with breakdowns, what works, what to fix, audience |
 | `story` | What the song means, one world, a three-colour palette, the one element the video is about (before, event, after), setup / turn / payoff |
@@ -98,12 +105,15 @@ Python uses snake_case and JS uses camelCase method names. Response fields are t
 
 | Python | JavaScript | API | Key |
 |---|---|---|---|
-| `analyze(file \| audio_url=…, wait=True)` | `analyze({ file \| audioUrl, wait })` | `POST /v1/songs` + polling | yes |
+| `analyze(file \| audio_url=…, test=False, idempotency_key=None, wait=True)` | `analyze({ file \| audioUrl, test, idempotencyKey, wait })` | `POST /v1/songs` + polling | yes |
 | `get_song(id, view, include)` | `getSong(id, { view, include })` | `GET /v1/songs/{id}` | yes |
 | `shot_plan(id)` | `shotPlan(id)` | `GET /v1/songs/{id}/shot-plan` | yes |
-| `list_songs(limit)` | `listSongs({ limit })` | `GET /v1/songs` | yes |
+| `list_songs(limit, starting_after)` | `listSongs({ limit, startingAfter })` | `GET /v1/songs` | yes |
+| `iter_songs(page_size)` | `iterSongs({ pageSize })` | `GET /v1/songs`, every page | yes |
 | `delete_song(id)` | `deleteSong(id)` | `DELETE /v1/songs/{id}` | yes |
 | `account()` | `account()` | `GET /v1/account` | yes |
+| `test_webhook(url)` | `testWebhook(url)` | `POST /v1/webhooks/test` | yes |
+| `webhook_deliveries(limit)` | `webhookDeliveries({ limit })` | `GET /v1/webhooks/deliveries` | yes |
 | `pricing()` | `pricing()` | `GET /v1/pricing` | no |
 | `examples()` | `examples()` | `GET /v1/examples` | no |
 | `example(id, view, include)` | `example(id, { view, include })` | `GET /v1/examples/{id}` | no |
@@ -113,8 +123,9 @@ Python uses snake_case and JS uses camelCase method names. Response fields are t
 Both SDKs:
 
 - send the key as `Authorization: Bearer sb_live_…`,
-- raise `SongbrainError` (`status`, `code`, `message`) and the subclasses `AuthenticationError`, `InsufficientCredits`, `NotFound`, `RateLimited` (with `retry_after` / `retryAfter`), `AnalysisFailed` and `WaitTimeout`,
-- retry 429 and 5xx up to 3 times with backoff and honour `Retry-After`. Uploads are only retried when nothing can have been created.
+- raise `SongbrainError` (`status`, `code`, `message`, `request_id` / `requestId`) and the subclasses `AuthenticationError`, `InsufficientCredits`, `NotFound`, `RateLimited` (with `retry_after` / `retryAfter`), `AnalysisFailed` and `WaitTimeout`,
+- send an `Idempotency-Key` with every new song and retry network errors, 429 and 5xx up to 3 times with backoff, honouring `Retry-After`,
+- keep the last rate-limit headers in `last_rate_limit` / `lastRateLimit`.
 
 Package docs: [python/README.md](python/README.md) · [js/README.md](js/README.md)
 
@@ -133,13 +144,58 @@ curl https://api.songbrain.ai/v1/songs/$ID -H "Authorization: Bearer $SONGBRAIN_
 
 Options on document endpoints: `?view=summary` drops word timings and beat arrays (about 3x smaller). `?include=song_dna,shot_plan` returns only the named sections.
 
-Errors always look like `{"error": {"code": "…", "message": "…"}}` with HTTP 400, 401, 402, 404, 409, 413, 415 or 429. A 429 carries a `Retry-After` header.
+Errors always look like `{"error": {"code": "…", "message": "…", "request_id": "req_…"}}` with HTTP 400, 401, 402, 404, 409, 413, 415 or 429. A 429 carries a `Retry-After` header.
+
+## Test mode
+
+Send `"test": true` (or `test=True` / `test: true` in the SDKs) and the song is free, needs no audio and is done right away. You get the Sugar Rush example analysis with your `title` and `external_ref`, `"livemode": false` and `billing.type = "test"`. A `webhook_url` still gets a signed `song.done` within seconds. It is made for CI and for building your integration before you spend a song.
+
+```python
+song = sb.analyze(test=True, external_ref="ci-123")   # done right away, costs nothing
+assert song["livemode"] is False
+```
+
+Test songs never use your free songs, but they are rate-limited and count toward the daily cap. A pytest example: [cookbook/ci_test_mode.py](cookbook/ci_test_mode.py).
+
+## Idempotency
+
+`POST /v1/songs` accepts an `Idempotency-Key` header (1–255 printable characters). The same key on the same account within 24 hours returns the first answer again (same song id, no second charge) with `Idempotent-Replayed: true`. The same key with a different request is a 409 `idempotency_key_reused`; a key whose first request is still running is a 409 `idempotency_in_progress` (retry after a second). Failed first requests are not stored, so the key can be retried.
+
+Both SDKs send a random key with every `analyze()` and reuse it across their own retries, so a timeout during an upload never creates two songs. Pass your own key (`idempotency_key=` / `idempotencyKey`), e.g. your job id, to make retries across processes safe too.
+
+## Pagination
+
+`GET /v1/songs?limit=20&starting_after=<song id>` returns the newest songs first with `has_more` and `next_cursor`. Pass `next_cursor` as `starting_after` for the next page, or let the SDK do it:
+
+```python
+for item in sb.iter_songs():           # Python
+    print(item["id"], item["status"], item["livemode"])
+```
+
+```ts
+for await (const item of sb.iterSongs()) console.log(item.id, item.status); // JS
+```
+
+## Request ids and rate limits
+
+Every response has a `Songbrain-Request-Id: req_…` header, and every error body repeats it as `error.request_id`. The SDKs put it on the error (`request_id` / `requestId`) and in its message. Quote it when you contact support.
+
+Requests with a key return `X-RateLimit-Limit` (requests per minute, currently 120), `X-RateLimit-Remaining` and `X-RateLimit-Reset` (seconds until the window has room again). The SDKs keep the last values in `sb.last_rate_limit` / `sb.lastRateLimit`.
 
 ## Webhooks
 
-Pass `webhook_url` when you create a song. Songbrain POSTs `song.done` or `song.failed`, and `account.low_balance` when you run low. It retries after 1 and 5 minutes.
+Pass `webhook_url` when you create a song. Songbrain POSTs `song.done` or `song.failed`, and `account.low_balance` when you run low:
 
-Every webhook has the header `Songbrain-Signature: t=<unix>,v1=<hex>`. `v1` is the HMAC-SHA256 of `"<t>.<raw body>"` with your key's webhook secret. Both SDKs verify it for you. See [examples/python/webhook_server.py](examples/python/webhook_server.py).
+```json
+{"id": "evt_…", "type": "song.done", "created": 1791200000, "livemode": true, "data": {"id": "…", "status": "done", "external_ref": "…"}}
+```
+
+- **Signature.** Every webhook has the header `Songbrain-Signature: t=<unix>,v1=<hex>`. `v1` is the HMAC-SHA256 of `"<t>.<raw body>"` with your key's webhook secret. Both SDKs verify it for you (`webhooks.verify` / `verifyWebhook`).
+- **Dedupe on the event id.** `id` (also in the `Songbrain-Event-Id` header) stays the same when an event is retried. Store the ids you have handled and answer 2xx to repeats.
+- **Retries.** Anything but a 2xx is retried, up to 10 attempts over about 3 days: right away, then 1 min, 5 min, 30 min, 2 h, 6 h, 12 h, 24 h, 48 h and 72 h after the first attempt. Redirects are not followed.
+- **Test ping.** `POST /v1/webhooks/test {"url": "…"}` (`test_webhook` / `testWebhook`) sends a signed `ping` right now and tells you whether it was delivered. `GET /v1/webhooks/deliveries` (`webhook_deliveries` / `webhookDeliveries`) lists the last attempts with status codes.
+
+Receivers: [cookbook/webhook_receiver_fastapi.py](cookbook/webhook_receiver_fastapi.py) (FastAPI, with dedupe) and [examples/python/webhook_server.py](examples/python/webhook_server.py) (Flask).
 
 ## MCP
 
@@ -163,6 +219,22 @@ Setup for each client: [examples/mcp.md](examples/mcp.md). Registry name: `io.gi
 | [examples/mcp.md](examples/mcp.md) | MCP setup for Claude Code, Claude Desktop and Cursor |
 
 Run either script with `--example old-truck-home` to try it without a key.
+
+## Cookbook
+
+Runnable recipes in [cookbook/](cookbook/README.md). All work with `--example sugar-rush` (no key), and the video ones have a `--dry-run` that prints every call and the ffmpeg command.
+
+| Recipe | What it does |
+|---|---|
+| [song_to_clips_fal.py](cookbook/song_to_clips_fal.py) | One fal.ai video clip per shot-plan scene, stitched on the beat with the song underneath |
+| [song_to_clips_replicate.py](cookbook/song_to_clips_replicate.py) | The same on Replicate |
+| [beat_synced_slideshow.py](cookbook/beat_synced_slideshow.py) | A folder of images cut on scenes, beats, bars or sections with ffmpeg. No AI keys |
+| [webhook_receiver_fastapi.py](cookbook/webhook_receiver_fastapi.py) | Signature check, dedupe by event id, ping / song.done / song.failed |
+| [ci_test_mode.py](cookbook/ci_test_mode.py) | pytest tests for CI with test mode |
+
+## Postman
+
+Import [postman/Songbrain.postman_collection.json](postman/Songbrain.postman_collection.json) into Postman, Insomnia or Bruno. Set `apiKey`, then run **Songs → Create song (test mode)**. Every endpoint is in it, with cursor pagination and an `Idempotency-Key` on creates.
 
 ## Pricing
 
@@ -193,6 +265,8 @@ Audio is used only for the analysis and never for training. Uploads are deleted 
 python/      PyPI package "songbrain"
 js/          npm package "songbrain"
 examples/    scripts and guides
+cookbook/    runnable recipes (AI clips, slideshow, webhooks, CI)
+postman/     Postman collection
 server.json  MCP Registry entry
 .github/     CI and publish workflows (tags py-v*, js-v*, mcp-v*)
 ```
@@ -204,7 +278,8 @@ server.json  MCP Registry entry
 - Interactive docs: https://api.songbrain.ai/v1/docs
 - OpenAPI 3.1: https://api.songbrain.ai/v1/openapi.json
 - Developer console: https://app.songbrain.ai/developers
-- Support: support@songbrain.ai
+- Changelog: [SDKs](CHANGELOG.md) · [API](https://www.songbrain.ai/docs/api/changelog)
+- Support: support@songbrain.ai · Security: [SECURITY.md](SECURITY.md) · Contributing: [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## License
 
