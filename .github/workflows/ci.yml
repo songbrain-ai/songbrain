@@ -36,6 +36,11 @@ jobs:
         run: python -m mypy --strict src/songbrain
       - name: Unit tests
         run: python -m pytest -m "not live" -q
+      - name: Cookbook and Postman (offline checks)
+        run: |
+          python -m compileall -q ../cookbook
+          python -m pytest ../cookbook/ci_test_mode.py -q -p no:cacheprovider
+          python -m json.tool ../postman/Songbrain.postman_collection.json > /dev/null
       - name: Build
         run: |
           python -m build
@@ -97,6 +102,10 @@ jobs:
       - name: Examples run against the example endpoints
         run: |
           python examples/python/shot_plan_to_prompts.py --example old-truck-home | head -3
+          python cookbook/song_to_clips_fal.py --example sugar-rush --dry-run > /dev/null
+          python cookbook/song_to_clips_replicate.py --example sugar-rush --dry-run --mode i2v > /dev/null
+          mkdir -p /tmp/cookbook-images && touch /tmp/cookbook-images/a.png /tmp/cookbook-images/b.png
+          python cookbook/beat_synced_slideshow.py --example sugar-rush --images /tmp/cookbook-images --cuts beats --dry-run > /dev/null
           cd js && npm pack --pack-destination /tmp >/dev/null
           mkdir -p /tmp/node-example && cp ../examples/node/shot-plan-to-prompts.mjs /tmp/node-example/
           cd /tmp/node-example && echo '{"private":true,"type":"module"}' > package.json
