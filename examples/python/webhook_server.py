@@ -10,8 +10,9 @@ ngrok or cloudflared while developing). Then start a song with:
 
     sb.analyze("song.mp3", webhook_url="https://<your-tunnel>/songbrain", wait=False)
 
-Songbrain tries three times: right away, after 1 minute and after 5 minutes.
-Answer 2xx quickly and do slow work elsewhere.
+Songbrain retries a failed delivery up to 10 times over about 3 days, always
+with the same event id. Answer 2xx quickly and do slow work elsewhere.
+Check the receiver with a signed ping: sb.test_webhook("https://<your-tunnel>/songbrain").
 """
 
 import os
@@ -37,13 +38,14 @@ def songbrain_webhook():
         abort(400)
 
     data = event.get("data", {})
-    # Retries can deliver the same event twice; make handling idempotent.
-    key = (event.get("type"), data.get("id"), event.get("created"))
-    if key in seen:
+    # Retries deliver the same event (same id) again; handle each id once.
+    if event["id"] in seen:
         return "", 200
-    seen.add(key)
+    seen.add(event["id"])
 
-    if event["type"] == "song.done":
+    if event["type"] == "ping":
+        print(f"ping {event['id']}")
+    elif event["type"] == "song.done":
         plan = sb.shot_plan(data["id"])
         scenes = plan["shot_plan"]["clip"]["scenes"]
         print(f"song.done {data['id']} (ref {data.get('external_ref')}): {len(scenes)} scenes")
