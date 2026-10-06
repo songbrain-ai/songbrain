@@ -59,7 +59,7 @@ pip install songbrain     # Python 3.9+, one dependency (requests)
 npm install songbrain     # Node 18+, no runtime dependencies, ESM + CJS + types
 ```
 
-The Python SDK is on [PyPI](https://pypi.org/project/songbrain/). The npm package follows shortly.
+Packages: [PyPI](https://pypi.org/project/songbrain/) · [npm](https://www.npmjs.com/package/songbrain).
 
 ## Quickstart: Python
 

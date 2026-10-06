@@ -1,8 +1,8 @@
 name: Publish to npm
 
 # Push a tag like `js-v0.1.0` to publish js/ to https://www.npmjs.com/package/songbrain
-# with provenance. Needs the repository secret NPM_TOKEN (a granular access token
-# with read and write access to the songbrain package).
+# with provenance via npm Trusted Publishing (GitHub OIDC, no token): the package's
+# trusted publisher on npmjs.com is songbrain-ai/songbrain, workflow publish-npm.yml.
 
 on:
   push:
@@ -38,6 +38,6 @@ jobs:
         run: npm test
         env:
           SONGBRAIN_OFFLINE: "1"
+      - name: npm 11.5+ (required for Trusted Publishing)
+        run: npm install -g npm@latest
       - run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
