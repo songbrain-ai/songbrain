@@ -1,0 +1,47 @@
+name: Bug report
+description: Something in the Python or JS SDK, an example or a cookbook recipe does not work.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please don't post API keys, webhook secrets or private audio links.
+        Security issues go to support@songbrain.ai, not here.
+  - type: dropdown
+    id: package
+    attributes:
+      label: Package
+      options:
+        - Python SDK (pip install songbrain)
+        - JavaScript / TypeScript SDK (npm install songbrain)
+        - Cookbook / examples
+        - MCP server
+        - Postman collection
+        - The API itself
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: SDK version and runtime
+      placeholder: "songbrain 0.2.0, Python 3.12 on macOS / Node 20 on Ubuntu"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Code to reproduce
+      description: The smallest snippet that shows it. Test mode (test=True) or an example id (sugar-rush) is ideal.
+      render: text
+  - type: input
+    id: request_id
+    attributes:
+      label: Request id
+      description: From the error (request_id / requestId) or the Songbrain-Request-Id response header.
+      placeholder: req_…

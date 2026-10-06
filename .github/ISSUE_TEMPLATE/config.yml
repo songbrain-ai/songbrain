@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: API documentation
+    url: https://www.songbrain.ai/docs/api
+    about: Reference, guides and the API changelog.
+  - name: Account, billing or a specific song (support@songbrain.ai)
+    url: https://app.songbrain.ai/developers
+    about: Keys, usage and credits are in the developer console. For anything else email support@songbrain.ai with the request id (req_…). Security reports go there too, never in an issue.

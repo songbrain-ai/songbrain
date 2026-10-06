@@ -1,0 +1,27 @@
+name: Feature request
+description: Suggest something for the SDKs, the cookbook or the API.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The video, product or workflow you are building, and where Songbrain gets in the way.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would help?
+      description: A method, a field, a recipe, an option. Sketch the call you would like to write.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Python SDK
+        - JavaScript / TypeScript SDK
+        - Cookbook / examples
+        - API response (new field or endpoint)
+        - MCP server
+        - Other
