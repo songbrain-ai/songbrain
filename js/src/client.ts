@@ -61,6 +61,13 @@ export interface AnalyzeOptions {
   /** File name for an upload. Its extension must match the audio format. Taken from the path or File name, or guessed from the bytes. */
   filename?: string;
   /**
+   * The song's lyrics as plain text (up to 20,000 characters), e.g. from Suno. The
+   * analysis then uses your exact words on the transcription's timing
+   * (`lyrics.source` = "provided_lyrics"); words the singer can't be heard on are
+   * left out, never guessed.
+   */
+  lyrics?: string;
+  /**
    * Test mode: free, never charged, no audio needed. The song is done right away and
    * returns the Sugar Rush example analysis with `livemode: false`. `song.done` is
    * still sent to `webhookUrl`. Made for CI and integration tests.
@@ -252,6 +259,7 @@ export class Songbrain {
     if (options.artist !== undefined) fields.artist = options.artist;
     if (options.webhookUrl !== undefined) fields.webhook_url = options.webhookUrl;
     if (options.externalRef !== undefined) fields.external_ref = options.externalRef;
+    if (options.lyrics !== undefined) fields.lyrics = options.lyrics;
     const headers = { [IDEMPOTENCY_HEADER]: options.idempotencyKey || (await newIdempotencyKey()) };
 
     let created: SongCreated;

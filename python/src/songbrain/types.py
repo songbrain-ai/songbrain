@@ -11,6 +11,8 @@ from typing import Any, Dict, List, Optional, TypedDict, Union
 
 __all__ = [
     "Billing",
+    "LyricsAlignment",
+    "Provenance",
     "SongInfo",
     "KeyChange",
     "Instrument",
@@ -167,11 +169,24 @@ class LyricLine(TypedDict, total=False):
     start: float
     end: float
     text: str
+    confidence: Optional[float]  # 0-1 transcription confidence; None when the words were provided
     words: List[Word]  # omitted in view=summary
+
+
+class LyricsAlignment(TypedDict, total=False):
+    match_ratio: Optional[float]  # share of provided words found in the audio
+    reference_words: Optional[int]
+    corrected_words: Optional[int]
+    used: bool  # False when the provided lyrics did not match the audio well enough
+    reason: str
 
 
 class Lyrics(TypedDict, total=False):
     language: Optional[str]
+    source: str  # "transcribed", "provided_lyrics" or "suno_lyrics"
+    basis: str  # "transcribed" or "provided"
+    note: str
+    alignment: LyricsAlignment
     lines: List[LyricLine]
     hidden: bool  # true for recognised commercial recordings
     reason: str
@@ -181,6 +196,18 @@ class ScoreBlock(TypedDict, total=False):
     score: int  # 0-100
     breakdown: Dict[str, int]
     note: str
+    basis: str  # "model_estimate": an AI model's listening judgement, not a measurement
+
+
+class Provenance(TypedDict, total=False):
+    """Which fields are measured from the audio and which are a model's reading."""
+
+    measured: List[str]
+    transcribed: List[str]
+    model_estimate: List[str]
+    generated: List[str]
+    confidence_fields: List[str]
+    doc: str
 
 
 class WhatWorks(TypedDict, total=False):
@@ -202,6 +229,8 @@ class Scores(TypedDict, total=False):
     what_works: List[WhatWorks]
     what_to_fix: List[WhatToFix]
     audience: List[str]
+    basis: str  # "model_estimate"
+    basis_note: str
 
 
 class StoryElement(TypedDict, total=False):
@@ -333,6 +362,7 @@ class Song(TypedDict, total=False):
     external_ref: Optional[str]
     billing: Billing
     livemode: bool  # False for test-mode songs
+    provenance: Provenance  # measured vs. transcribed vs. model estimate vs. generated
 
 
 class SongCreated(TypedDict, total=False):

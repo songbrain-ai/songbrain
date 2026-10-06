@@ -147,12 +147,29 @@ export interface LyricLine {
   start: number;
   end: number;
   text: string;
+  /** 0-1 transcription confidence; null when the words were provided. */
+  confidence?: number | null;
   /** Omitted in view=summary. */
   words?: Word[];
 }
 
+export interface LyricsAlignment {
+  /** Share of the provided words that were found in the audio. */
+  match_ratio?: number | null;
+  reference_words?: number | null;
+  corrected_words?: number | null;
+  /** false when the provided lyrics did not match the audio well enough. */
+  used?: boolean;
+  reason?: string;
+}
+
 export interface Lyrics {
   language?: string | null;
+  /** Where the words come from. */
+  source?: "transcribed" | "provided_lyrics" | "suno_lyrics";
+  basis?: "transcribed" | "provided";
+  note?: string;
+  alignment?: LyricsAlignment;
   lines?: LyricLine[];
   /** true for recognised commercial recordings; then `lines` is absent. */
   hidden?: boolean;
@@ -164,6 +181,18 @@ export interface ScoreBlock {
   score: number;
   breakdown: Record<string, number>;
   note?: string;
+  /** "model_estimate": an AI model's listening judgement, not a measurement. */
+  basis?: "model_estimate";
+}
+
+/** Which fields are measured from the audio and which are a model's reading. */
+export interface Provenance {
+  measured: string[];
+  transcribed: string[];
+  model_estimate: string[];
+  generated: string[];
+  confidence_fields: string[];
+  doc: string;
 }
 
 export interface WhatWorks {
@@ -186,6 +215,8 @@ export interface Scores {
   what_works: WhatWorks[];
   what_to_fix: WhatToFix[];
   audience: string[];
+  basis?: "model_estimate";
+  basis_note?: string;
 }
 
 export interface StoryElement {
@@ -343,6 +374,8 @@ export interface Song {
   billing?: Billing;
   /** false for test-mode songs. */
   livemode?: boolean;
+  /** Measured vs. transcribed vs. model estimate vs. generated. */
+  provenance?: Provenance;
 }
 
 /** The 202 body of POST /songs. */

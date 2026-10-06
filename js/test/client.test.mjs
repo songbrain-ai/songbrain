@@ -281,6 +281,16 @@ test("test mode with a URL and with an upload; no test flag by default", async (
   assert.equal(JSON.parse(calls[2].body).test, undefined);
 });
 
+test("lyrics are sent with a URL and with an upload", async () => {
+  const ok = () => json(202, { id: "s", status: "processing" });
+  const { sb, calls } = client([ok(), ok()]);
+  const lyrics = "[Verse]\nI name the fear that held me frozen";
+  await sb.analyze({ audioUrl: "https://x/a.mp3", lyrics, wait: false });
+  assert.deepEqual(JSON.parse(calls[0].body), { audio_url: "https://x/a.mp3", lyrics });
+  await sb.analyze({ file: Buffer.concat([Buffer.from("ID3"), Buffer.alloc(32)]), lyrics, wait: false });
+  assert.deepEqual(calls[1].upload.fields, { lyrics });
+});
+
 // ── request ids and rate limits ─────────────────────────────────────────────
 
 test("errors carry the request id from the body, else from the header", async () => {

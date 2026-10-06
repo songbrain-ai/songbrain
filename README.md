@@ -157,6 +157,23 @@ assert song["livemode"] is False
 
 Test songs never use your free songs, but they are rate-limited and count toward the daily cap. A pytest example: [cookbook/ci_test_mode.py](cookbook/ci_test_mode.py).
 
+## Your own lyrics
+
+Lyrics are transcribed from the vocals, and sung words can be misheard. If you have the lyrics (Suno gives them to you), send them along: the analysis uses your exact words on the transcription's timing. Words the singer can't be heard on are left out, never guessed.
+
+```python
+song = sb.analyze("song.mp3", lyrics=open("lyrics.txt").read())
+song["lyrics"]["source"]   # "provided_lyrics"
+```
+
+```ts
+const song = await sb.analyze({ file: "song.mp3", lyrics });
+```
+
+## Measured or estimated?
+
+Every song carries `provenance`: which fields are measured from the audio (tempo, key, beats, sections, loudness, moment windows), which are transcribed (lyrics), which are an AI model's judgement (genre, mood, scores) and which are generated (story, prompts, tagline). Scores also say `"basis": "model_estimate"`. Details: [docs](https://www.songbrain.ai/docs/api#provenance).
+
 ## Idempotency
 
 `POST /v1/songs` accepts an `Idempotency-Key` header (1–255 printable characters). The same key on the same account within 24 hours returns the first answer again (same song id, no second charge) with `Idempotent-Replayed: true`. The same key with a different request is a 409 `idempotency_key_reused`; a key whose first request is still running is a 409 `idempotency_in_progress` (retry after a second). Failed first requests are not stored, so the key can be retried.

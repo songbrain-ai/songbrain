@@ -308,6 +308,15 @@ def test_test_mode_with_url_and_with_upload():
     assert sess.calls[1][2]["data"] == {"test": "true"}
 
 
+def test_lyrics_are_sent_with_url_and_with_upload():
+    sb, sess = _client([_resp(202, {"id": "s1"}), _resp(202, {"id": "s2"})])
+    text = "[Verse]\nI name the fear that held me frozen"
+    sb.analyze(audio_url="https://x/a.mp3", lyrics=text, wait=False)
+    assert sess.calls[0][2]["json"] == {"audio_url": "https://x/a.mp3", "lyrics": text}
+    sb.analyze(b"ID3" + bytes(32), lyrics=text, wait=False)
+    assert sess.calls[1][2]["data"] == {"lyrics": text}
+
+
 def test_no_test_flag_by_default():
     sb, sess = _client([_resp(202, {"id": "s"})])
     sb.analyze(audio_url="https://x/a.mp3", wait=False)

@@ -195,6 +195,7 @@ class Songbrain:
         webhook_url: Optional[str] = ...,
         external_ref: Optional[str] = ...,
         filename: Optional[str] = ...,
+        lyrics: Optional[str] = ...,
         test: bool = ...,
         idempotency_key: Optional[str] = ...,
         wait: Literal[True] = ...,
@@ -213,6 +214,7 @@ class Songbrain:
         webhook_url: Optional[str] = ...,
         external_ref: Optional[str] = ...,
         filename: Optional[str] = ...,
+        lyrics: Optional[str] = ...,
         test: bool = ...,
         idempotency_key: Optional[str] = ...,
         wait: Literal[False],
@@ -230,6 +232,7 @@ class Songbrain:
         webhook_url: Optional[str] = None,
         external_ref: Optional[str] = None,
         filename: Optional[str] = None,
+        lyrics: Optional[str] = None,
         test: bool = False,
         idempotency_key: Optional[str] = None,
         wait: bool = True,
@@ -250,6 +253,9 @@ class Songbrain:
             external_ref: Optional id of your own, echoed back in responses and webhooks.
             filename: File name sent with an upload. The extension must match the audio format.
                 Taken from the path when ``file`` is a path; guessed from the bytes otherwise.
+            lyrics: Optional lyrics as plain text (up to 20,000 characters), e.g. from Suno. The analysis
+                then uses your exact words on the transcription's timing (``lyrics.source`` becomes
+                ``"provided_lyrics"``); words the singer can't be heard on are left out, never guessed.
             test: Test mode: free, never charged, no audio needed. The song is ``done`` right away and
                 returns the Sugar Rush example analysis with ``livemode: false``. ``song.done`` is still
                 sent to ``webhook_url``. Made for CI and integration tests.
@@ -272,7 +278,8 @@ class Songbrain:
             raise ValueError("Pass exactly one of `file` or `audio_url` (or test=True).")
 
         fields: Dict[str, str] = {}
-        for key, value in (("title", title), ("artist", artist), ("webhook_url", webhook_url), ("external_ref", external_ref)):
+        for key, value in (("title", title), ("artist", artist), ("webhook_url", webhook_url),
+                           ("external_ref", external_ref), ("lyrics", lyrics)):
             if value is not None:
                 fields[key] = value
         headers = {IDEMPOTENCY_HEADER: idempotency_key or str(uuid.uuid4())}
