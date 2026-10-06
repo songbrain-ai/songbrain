@@ -1,7 +1,7 @@
 name: Publish to MCP Registry
 
 # Push a tag like `mcp-v1.0.0` to publish server.json to the official MCP Registry
-# (https://registry.modelcontextprotocol.io) as io.github.LeonUli/songbrain.
+# (https://registry.modelcontextprotocol.io) as io.github.songbrain-ai/songbrain.
 # Authenticates with GitHub OIDC; no secret needed. The tag sets the version.
 # Follows https://github.com/modelcontextprotocol/registry/blob/main/docs/modelcontextprotocol-io/github-actions.mdx
 

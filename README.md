@@ -62,7 +62,7 @@ npm install songbrain     # Node 18+, no runtime dependencies, ESM + CJS + types
 Until the first PyPI release is out, install the Python SDK straight from this repo:
 
 ```bash
-pip install "git+https://github.com/LeonUli/songbrain#subdirectory=python"
+pip install "git+https://github.com/songbrain-ai/songbrain#subdirectory=python"
 ```
 
 ## Quickstart: Python
@@ -154,7 +154,7 @@ claude mcp add --transport http songbrain https://api.songbrain.ai/mcp \
   --header "Authorization: Bearer sb_live_…"
 ```
 
-Setup for each client: [examples/mcp.md](examples/mcp.md). Registry name: `io.github.LeonUli/songbrain` ([server.json](server.json)).
+Setup for each client: [examples/mcp.md](examples/mcp.md). Registry name: `io.github.songbrain-ai/songbrain` ([server.json](server.json)).
 
 ## Examples
 

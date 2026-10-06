@@ -45,8 +45,8 @@ dev = ["pytest>=7", "build>=1"]
 [project.urls]
 Homepage = "https://www.songbrain.ai/api-access"
 Documentation = "https://www.songbrain.ai/docs/api"
-Source = "https://github.com/LeonUli/songbrain"
-Issues = "https://github.com/LeonUli/songbrain/issues"
+Source = "https://github.com/songbrain-ai/songbrain"
+Issues = "https://github.com/songbrain-ai/songbrain/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/songbrain"]

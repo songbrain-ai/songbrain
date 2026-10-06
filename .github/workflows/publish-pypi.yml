@@ -2,7 +2,7 @@ name: Publish to PyPI
 
 # Push a tag like `py-v0.1.0` to publish python/ to https://pypi.org/p/songbrain.
 # Uses PyPI Trusted Publishing (no token). One-time setup on pypi.org:
-# owner LeonUli, repository songbrain, workflow publish-pypi.yml, environment pypi.
+# owner songbrain-ai, repository songbrain, workflow publish-pypi.yml, environment pypi.
 
 on:
   push:

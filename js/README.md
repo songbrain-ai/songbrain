@@ -116,6 +116,6 @@ app.post("/songbrain", express.raw({ type: "application/json" }), (req, res) => 
 - OpenAPI: https://api.songbrain.ai/v1/openapi.json
 - MCP server: https://api.songbrain.ai/mcp
 - Get a key: https://app.songbrain.ai/developers
-- Source: https://github.com/LeonUli/songbrain
+- Source: https://github.com/songbrain-ai/songbrain
 
 MIT License.

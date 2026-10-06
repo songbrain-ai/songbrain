@@ -104,7 +104,7 @@ ok = webhooks.verify(raw_body, request.headers["Songbrain-Signature"], secret)  
 event = webhooks.construct_event(raw_body, header, secret)  # verified dict, or raises
 ```
 
-The default tolerance is 300 s. A full Flask receiver is in [examples/python/webhook_server.py](https://github.com/LeonUli/songbrain/blob/main/examples/python/webhook_server.py).
+The default tolerance is 300 s. A full Flask receiver is in [examples/python/webhook_server.py](https://github.com/songbrain-ai/songbrain/blob/main/examples/python/webhook_server.py).
 
 ## Pricing
 
@@ -116,6 +116,6 @@ The default tolerance is 300 s. A full Flask receiver is in [examples/python/web
 - OpenAPI: https://api.songbrain.ai/v1/openapi.json
 - MCP server: https://api.songbrain.ai/mcp
 - Get a key: https://app.songbrain.ai/developers
-- Source: https://github.com/LeonUli/songbrain
+- Source: https://github.com/songbrain-ai/songbrain
 
 MIT License.

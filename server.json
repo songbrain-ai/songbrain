@@ -1,12 +1,12 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.LeonUli/songbrain",
+  "name": "io.github.songbrain-ai/songbrain",
   "title": "Songbrain",
   "description": "Song in, video plan out: beat grid, best moments, timed lyrics, story and a beat-synced shot plan.",
   "version": "1.0.0",
   "websiteUrl": "https://www.songbrain.ai/docs/api",
   "repository": {
-    "url": "https://github.com/LeonUli/songbrain",
+    "url": "https://github.com/songbrain-ai/songbrain",
     "source": "github"
   },
   "remotes": [

@@ -7,11 +7,11 @@
   "homepage": "https://www.songbrain.ai/api-access",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/LeonUli/songbrain.git",
+    "url": "git+https://github.com/songbrain-ai/songbrain.git",
     "directory": "js"
   },
   "bugs": {
-    "url": "https://github.com/LeonUli/songbrain/issues"
+    "url": "https://github.com/songbrain-ai/songbrain/issues"
   },
   "keywords": [
     "songbrain",
