@@ -1,0 +1,7 @@
+songbrain>=0.2.0
+requests>=2.25
+# webhook_receiver_fastapi.py
+fastapi>=0.100
+uvicorn>=0.23
+# ci_test_mode.py
+pytest>=7

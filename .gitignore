@@ -31,3 +31,9 @@ npm-debug.log*
 mcp-publisher
 mcp-publisher.exe
 .mcpregistry_*
+
+# Cookbook outputs
+cookbook/clips/
+clips/
+songbrain_*.mp4
+songbrain_events.sqlite3
