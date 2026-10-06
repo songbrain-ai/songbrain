@@ -62,8 +62,12 @@ export function verifyWebhook(
 
 /**
  * Verify the signature and return the parsed event:
- * `{ type: "song.done" | "song.failed" | "account.low_balance", created, data }`.
+ * `{ id, type: "song.done" | "song.failed" | "account.low_balance" | "ping", created, livemode, data }`.
  * Throws if the signature is not valid.
+ *
+ * `id` (`evt_…`, also the `Songbrain-Event-Id` header) stays the same when
+ * Songbrain retries an event (up to 10 attempts over about 3 days): store the
+ * ids you have handled and skip repeats.
  */
 export function constructWebhookEvent<T = Record<string, unknown>>(
   rawBody: RawBody,

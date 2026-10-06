@@ -12,15 +12,21 @@ import type {
   DeleteResult,
   ExampleList,
   Pricing,
+  RateLimitInfo,
   SectionName,
   Song,
   SongCreated,
   SongList,
+  SongListItem,
   SongShotPlan,
+  WebhookDeliveryList,
+  WebhookTestResult,
 } from "./types.js";
 import { VERSION } from "./version.js";
 
 export const DEFAULT_BASE_URL = "https://api.songbrain.ai/v1";
+const REQUEST_ID_HEADER = "Songbrain-Request-Id";
+const IDEMPOTENCY_HEADER = "Idempotency-Key";
 
 /** A Blob/File, a Buffer or bytes, or a local file path (Node). */
 export type FileInput = Blob | Uint8Array | ArrayBuffer | string;
@@ -32,7 +38,10 @@ export interface SongbrainOptions {
   baseUrl?: string;
   /** Timeout for each HTTP request in ms (uploads included). Default 60 000. */
   timeoutMs?: number;
-  /** How often to retry 429 and 5xx responses, with backoff. Default 3. */
+  /**
+   * How often to retry network errors, 429 and 5xx responses, with backoff. Default 3.
+   * Song creation is retried too, because every create sends an `Idempotency-Key`.
+   */
   maxRetries?: number;
   /** A custom fetch implementation. Defaults to the global fetch. */
   fetch?: typeof fetch;
@@ -51,6 +60,18 @@ export interface AnalyzeOptions {
   externalRef?: string;
   /** File name for an upload. Its extension must match the audio format. Taken from the path or File name, or guessed from the bytes. */
   filename?: string;
+  /**
+   * Test mode: free, never charged, no audio needed. The song is done right away and
+   * returns the Sugar Rush example analysis with `livemode: false`. `song.done` is
+   * still sent to `webhookUrl`. Made for CI and integration tests.
+   */
+  test?: boolean;
+  /**
+   * Sent as `Idempotency-Key`. By default a random UUID per call, reused across the
+   * client's own retries, so a retried create never makes a second song. Pass your
+   * own (e.g. your job id) to make retries across processes safe too (24 h window).
+   */
+  idempotencyKey?: string;
   /** Wait until the song is done and return the full document (default true). */
   wait?: boolean;
   /** Time between status checks while waiting. Default 5 000. */
@@ -62,6 +83,20 @@ export interface AnalyzeOptions {
 export interface WaitOptions {
   pollIntervalMs?: number;
   timeoutMs?: number;
+}
+
+export interface ListSongsOptions {
+  /** Page size, 1-100. Default 20. */
+  limit?: number;
+  /** A song id, usually the previous page's `next_cursor`. Returns the songs after it. */
+  startingAfter?: string;
+}
+
+export interface IterSongsOptions {
+  /** Songs per request, 1-100. Default 100. */
+  pageSize?: number;
+  /** Start after this song id. */
+  startingAfter?: string;
 }
 
 export interface GetSongOptions {
@@ -125,6 +160,38 @@ function retryAfterSeconds(value: string | null): number | null {
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+function intHeader(value: string | null): number | null {
+  if (value === null || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.trunc(n) : null;
+}
+
+function rateLimitFrom(headers: Headers): RateLimitInfo | null {
+  const limit = intHeader(headers.get("X-RateLimit-Limit"));
+  if (limit === null) return null;
+  return {
+    limit,
+    remaining: intHeader(headers.get("X-RateLimit-Remaining")),
+    reset: intHeader(headers.get("X-RateLimit-Reset")),
+  };
+}
+
+/** A random UUID v4: Web Crypto where available (browsers, Node 19+), node:crypto on Node 18. */
+async function newIdempotencyKey(): Promise<string> {
+  const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
+  if (typeof c?.randomUUID === "function") return c.randomUUID();
+  try {
+    const { randomUUID } = await import("node:crypto");
+    return randomUUID();
+  } catch {
+    const hex = Array.from({ length: 32 }, () => Math.floor(Math.random() * 16).toString(16));
+    hex[12] = "4";
+    hex[16] = ((parseInt(hex[16] as string, 16) & 0x3) | 0x8).toString(16);
+    const h = hex.join("");
+    return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+  }
+}
+
 /**
  * Client for the Songbrain API. Every method resolves to the JSON body of
  * the response.
@@ -141,6 +208,13 @@ export class Songbrain {
   readonly timeoutMs: number;
   readonly maxRetries: number;
   private readonly fetchImpl: typeof fetch;
+  /**
+   * `{ limit, remaining, reset }` from the `X-RateLimit-*` headers of the last response
+   * that had them (null before that). `reset` is seconds until the window has room.
+   */
+  lastRateLimit: RateLimitInfo | null = null;
+  /** The `Songbrain-Request-Id` of the last response (null before the first one). */
+  lastRequestId: string | null = null;
   /** @internal Overridable in tests. */
   _sleep: (ms: number) => Promise<void> = sleep;
 
@@ -157,7 +231,8 @@ export class Songbrain {
   // ── songs ────────────────────────────────────────────────────────────────
 
   /**
-   * Analyse a song from a file or a public URL. Pass exactly one of `file` or `audioUrl`.
+   * Analyse a song from a file or a public URL. Pass exactly one of `file` or `audioUrl`
+   * (or neither with `test: true`).
    * Typically 60-90 s. With `wait: true` (default) resolves to the full document;
    * with `wait: false` to the 202 body `{ id, status: "processing", eta_sec, billing }`.
    */
@@ -165,22 +240,30 @@ export class Songbrain {
   analyze(options: AnalyzeOptions & { wait?: true }): Promise<Song>;
   analyze(options: AnalyzeOptions): Promise<Song | SongCreated>;
   async analyze(options: AnalyzeOptions): Promise<Song | SongCreated> {
-    const { file, audioUrl } = options;
-    if ((file === undefined) === (audioUrl === undefined)) {
+    const { file, audioUrl, test } = options;
+    if (file !== undefined && audioUrl !== undefined) {
       throw new TypeError("Pass exactly one of `file` or `audioUrl`.");
+    }
+    if (file === undefined && audioUrl === undefined && !test) {
+      throw new TypeError("Pass exactly one of `file` or `audioUrl` (or `test: true`).");
     }
     const fields: Record<string, string> = {};
     if (options.title !== undefined) fields.title = options.title;
     if (options.artist !== undefined) fields.artist = options.artist;
     if (options.webhookUrl !== undefined) fields.webhook_url = options.webhookUrl;
     if (options.externalRef !== undefined) fields.external_ref = options.externalRef;
+    const headers = { [IDEMPOTENCY_HEADER]: options.idempotencyKey || (await newIdempotencyKey()) };
 
     let created: SongCreated;
-    if (audioUrl !== undefined) {
-      created = await this.request<SongCreated>("POST", "/songs", { json: { audio_url: audioUrl, ...fields } });
+    if (file === undefined) {
+      const json: Json = audioUrl !== undefined ? { audio_url: audioUrl, ...fields } : { ...fields };
+      if (test) json.test = true;
+      created = await this.request<SongCreated>("POST", "/songs", { json, headers });
     } else {
-      const { blob, name } = await toUpload(file as FileInput, options.filename);
+      if (test) fields.test = "true";
+      const { blob, name } = await toUpload(file, options.filename);
       created = await this.request<SongCreated>("POST", "/songs", {
+        headers,
         form: () => {
           const form = new FormData();
           form.append("file", blob, name);
@@ -228,9 +311,29 @@ export class Songbrain {
     return this.request<SongShotPlan>("GET", `/songs/${encodeURIComponent(songId)}/shot-plan`);
   }
 
-  /** Your songs, newest first. `limit` is 1-100 (default 20). */
-  listSongs(options: { limit?: number } = {}): Promise<SongList> {
-    return this.request<SongList>("GET", "/songs", { query: { limit: String(options.limit ?? 20) } });
+  /** One page of your songs, newest first: `{ object: "list", data, has_more, next_cursor }`. */
+  listSongs(options: ListSongsOptions = {}): Promise<SongList> {
+    return this.request<SongList>("GET", "/songs", {
+      query: { limit: String(options.limit ?? 20), starting_after: options.startingAfter },
+    });
+  }
+
+  /**
+   * All your songs, newest first, fetching pages as needed.
+   *
+   * ```ts
+   * for await (const item of sb.iterSongs()) console.log(item.id, item.status);
+   * ```
+   */
+  async *iterSongs(options: IterSongsOptions = {}): AsyncGenerator<SongListItem, void, undefined> {
+    let cursor = options.startingAfter;
+    for (;;) {
+      const page = await this.listSongs({ limit: options.pageSize ?? 100, startingAfter: cursor });
+      const data = page.data ?? [];
+      yield* data;
+      cursor = page.next_cursor ?? data[data.length - 1]?.id;
+      if (!page.has_more || !cursor) return;
+    }
   }
 
   /** Delete a song's audio and analysis now. 409 `still_processing` while it runs. */
@@ -248,6 +351,23 @@ export class Songbrain {
   /** Prices and limits. No key needed. */
   pricing(): Promise<Pricing> {
     return this.request<Pricing>("GET", "/pricing");
+  }
+
+  // ── webhooks ─────────────────────────────────────────────────────────────
+
+  /**
+   * Send a signed `ping` event to `url` right now:
+   * `{ delivered, status_code, latency_ms, event_id }`. Checks your receiver before real songs.
+   */
+  testWebhook(url: string): Promise<WebhookTestResult> {
+    return this.request<WebhookTestResult>("POST", "/webhooks/test", { json: { url } });
+  }
+
+  /** The last webhook delivery attempts for your account, newest first. */
+  webhookDeliveries(options: { limit?: number } = {}): Promise<WebhookDeliveryList> {
+    return this.request<WebhookDeliveryList>("GET", "/webhooks/deliveries", {
+      query: { limit: String(options.limit ?? 20) },
+    });
   }
 
   // ── examples (no key) ────────────────────────────────────────────────────
@@ -276,11 +396,18 @@ export class Songbrain {
   private async request<T>(
     method: "GET" | "POST" | "DELETE",
     path: string,
-    opts: { query?: Record<string, string | undefined>; json?: Json; form?: () => FormData } = {},
+    opts: {
+      query?: Record<string, string | undefined>;
+      json?: Json;
+      form?: () => FormData;
+      headers?: Record<string, string>;
+    } = {},
   ): Promise<T> {
     const url = new URL(this.baseUrl + path);
     for (const [k, v] of Object.entries(opts.query ?? {})) if (v !== undefined) url.searchParams.set(k, v);
-    const idempotent = method !== "POST";
+    const hasKey = Boolean(opts.headers?.[IDEMPOTENCY_HEADER]);
+    // A POST with an Idempotency-Key is safe to resend: the API returns the first answer again.
+    const idempotent = method !== "POST" || hasKey;
 
     for (let attempt = 0; ; attempt++) {
       const headers: Record<string, string> = {
@@ -288,6 +415,7 @@ export class Songbrain {
         "User-Agent": `songbrain-js/${VERSION}`,
       };
       if (this.apiKey) headers.Authorization = `Bearer ${this.apiKey}`;
+      Object.assign(headers, opts.headers);
       let body: BodyInit | undefined;
       if (opts.json) {
         headers["Content-Type"] = "application/json";
@@ -300,7 +428,8 @@ export class Songbrain {
       try {
         res = await this.fetchImpl(url, { method, headers, body, signal: AbortSignal.timeout(this.timeoutMs) });
       } catch (err) {
-        // Network errors and timeouts: only resend if nothing can have been created.
+        // Network errors and timeouts: only resend if nothing can have been created
+        // or the request carries an Idempotency-Key.
         if (idempotent && attempt < this.maxRetries) {
           await this._sleep(this.backoffMs(attempt));
           continue;
@@ -308,6 +437,10 @@ export class Songbrain {
         const message = err instanceof Error ? err.message : String(err);
         throw new SongbrainError(0, "connection_error", message);
       }
+
+      this.lastRequestId = res.headers.get(REQUEST_ID_HEADER) || null;
+      const rateLimit = rateLimitFrom(res.headers);
+      if (rateLimit) this.lastRateLimit = rateLimit;
 
       if (res.ok) {
         const text = await res.text();
@@ -320,12 +453,17 @@ export class Songbrain {
       }
 
       const error = await errorFrom(res);
-      // 429 never started any work. For POST only retry gateway errors (502/503).
+      // 429 never started any work. For a POST without Idempotency-Key only retry
+      // gateway errors (502/503).
+      const inProgress = hasKey && res.status === 409 && error.code === "idempotency_in_progress";
       const retryable =
-        res.status === 429 || (res.status >= 500 && (idempotent || res.status === 502 || res.status === 503));
+        res.status === 429 ||
+        inProgress ||
+        (res.status >= 500 && (idempotent || res.status === 502 || res.status === 503));
       if (retryable && attempt < this.maxRetries) {
         const after = error instanceof RateLimited ? error.retryAfter : null;
-        const delayMs = after !== null ? after * 1000 : this.backoffMs(attempt);
+        let delayMs = after !== null ? after * 1000 : this.backoffMs(attempt);
+        if (inProgress) delayMs = Math.max(1000, delayMs);
         if (delayMs <= MAX_RETRY_WAIT_SEC * 1000) {
           await this._sleep(delayMs);
           continue;
@@ -346,6 +484,7 @@ async function errorFrom(res: Response): Promise<SongbrainError> {
   let body: unknown;
   let code = `http_${res.status}`;
   let message = text.trim().slice(0, 500) || res.statusText || `HTTP ${res.status}`;
+  let requestId = res.headers.get(REQUEST_ID_HEADER) || null;
   try {
     body = JSON.parse(text);
   } catch {
@@ -354,25 +493,27 @@ async function errorFrom(res: Response): Promise<SongbrainError> {
   if (body && typeof body === "object") {
     const err = (body as { error?: unknown }).error;
     if (err && typeof err === "object") {
-      const e = err as { code?: unknown; message?: unknown };
+      const e = err as { code?: unknown; message?: unknown; request_id?: unknown };
       if (e.code) code = String(e.code);
       if (e.message) message = String(e.message);
+      if (e.request_id) requestId = String(e.request_id);
     } else if ("detail" in (body as object)) {
+      // request validation, older API versions
       code = "validation_error";
       message = JSON.stringify((body as { detail: unknown }).detail);
     }
   }
   switch (res.status) {
     case 401:
-      return new AuthenticationError(401, code, message, body);
+      return new AuthenticationError(401, code, message, body, requestId);
     case 402:
-      return new InsufficientCredits(402, code, message, body);
+      return new InsufficientCredits(402, code, message, body, requestId);
     case 404:
-      return new NotFound(404, code, message, body);
+      return new NotFound(404, code, message, body, requestId);
     case 429:
-      return new RateLimited(429, code, message, body, retryAfterSeconds(res.headers.get("Retry-After")));
+      return new RateLimited(429, code, message, body, retryAfterSeconds(res.headers.get("Retry-After")), requestId);
     default:
-      return new SongbrainError(res.status, code, message, body);
+      return new SongbrainError(res.status, code, message, body, requestId);
   }
 }
 

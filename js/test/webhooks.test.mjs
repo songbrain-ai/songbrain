@@ -56,3 +56,11 @@ test("constructWebhookEvent verifies and parses", () => {
   assert.equal(event.data.id, "8f0c");
   assert.throws(() => constructWebhookEvent(BODY, header(BODY, now(), "nope"), SECRET));
 });
+
+test("constructWebhookEvent keeps the event id and ping events", () => {
+  const body = JSON.stringify({ id: "evt_0123", type: "ping", created: now(), livemode: true, data: {} });
+  const event = constructWebhookEvent(body, header(body), SECRET);
+  assert.equal(event.id, "evt_0123");
+  assert.equal(event.type, "ping");
+  assert.equal(event.livemode, true);
+});

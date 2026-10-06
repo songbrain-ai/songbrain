@@ -3,7 +3,15 @@
  * The official client for the Songbrain API (https://www.songbrain.ai/docs/api).
  */
 export { Songbrain, DEFAULT_BASE_URL } from "./client.js";
-export type { SongbrainOptions, AnalyzeOptions, WaitOptions, GetSongOptions, FileInput } from "./client.js";
+export type {
+  SongbrainOptions,
+  AnalyzeOptions,
+  WaitOptions,
+  GetSongOptions,
+  ListSongsOptions,
+  IterSongsOptions,
+  FileInput,
+} from "./client.js";
 export {
   SongbrainError,
   AuthenticationError,

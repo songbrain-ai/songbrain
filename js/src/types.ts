@@ -313,6 +313,8 @@ export interface ShotPlan {
 export interface ErrorInfo {
   code: string;
   message: string;
+  /** "req_…", also in the Songbrain-Request-Id header. */
+  request_id?: string;
 }
 
 /**
@@ -339,6 +341,8 @@ export interface Song {
   created_at?: string | null;
   external_ref?: string | null;
   billing?: Billing;
+  /** false for test-mode songs. */
+  livemode?: boolean;
 }
 
 /** The 202 body of POST /songs. */
@@ -350,6 +354,7 @@ export interface SongCreated {
   billing: Billing;
   external_ref?: string | null;
   url: string;
+  livemode?: boolean;
 }
 
 /** GET /songs/{id}/shot-plan and GET /examples/{id}/shot-plan. */
@@ -367,11 +372,15 @@ export interface SongListItem {
   external_ref: string | null;
   created_at: string | null;
   billing: Billing;
+  livemode?: boolean;
 }
 
 export interface SongList {
   object: "list";
   data: SongListItem[];
+  has_more?: boolean;
+  /** Pass as `startingAfter` for the next page. */
+  next_cursor?: string | null;
 }
 
 export interface DeleteResult {
@@ -428,8 +437,45 @@ export interface Pricing {
 
 /** A webhook event body. */
 export interface WebhookEvent<T = Record<string, unknown>> {
-  type: "song.done" | "song.failed" | "account.low_balance" | (string & {});
+  /** "evt_…". Stays the same across retries of one event: dedupe on it. */
+  id: string;
+  type: "song.done" | "song.failed" | "account.low_balance" | "ping" | (string & {});
   /** Unix seconds. */
   created: number;
+  livemode: boolean;
   data: T;
+}
+
+/** From the X-RateLimit-* headers. See `Songbrain.lastRateLimit`. */
+export interface RateLimitInfo {
+  /** Requests per minute. */
+  limit: number;
+  remaining: number | null;
+  /** Seconds until the window has room again. */
+  reset: number | null;
+}
+
+/** POST /webhooks/test. */
+export interface WebhookTestResult {
+  delivered: boolean;
+  status_code: number | null;
+  latency_ms: number;
+  event_id: string;
+}
+
+export interface WebhookDelivery {
+  event_id: string;
+  type: WebhookEvent["type"];
+  song_id: string | null;
+  url: string;
+  attempt: number;
+  status_code: number | null;
+  delivered: boolean;
+  latency_ms: number | null;
+  created_at: string;
+}
+
+export interface WebhookDeliveryList {
+  object: "list";
+  data: WebhookDelivery[];
 }

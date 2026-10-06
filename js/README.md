@@ -46,13 +46,16 @@ Every method resolves to the JSON body of the response. Field names are exactly 
 
 | Method | API call | Key |
 |---|---|---|
-| `analyze({ file?, audioUrl?, title?, artist?, webhookUrl?, externalRef?, filename?, wait = true, pollIntervalMs = 5000, timeoutMs = 300000 })` | `POST /songs`, then polls | yes |
+| `analyze({ file?, audioUrl?, title?, artist?, webhookUrl?, externalRef?, filename?, test?, idempotencyKey?, wait = true, pollIntervalMs = 5000, timeoutMs = 300000 })` | `POST /songs`, then polls | yes |
 | `waitFor(id, { pollIntervalMs?, timeoutMs? })` | polls `GET /songs/{id}` | yes |
 | `getSong(id, { view?, include? })` | `GET /songs/{id}` | yes |
 | `shotPlan(id)` | `GET /songs/{id}/shot-plan` | yes |
-| `listSongs({ limit = 20 })` | `GET /songs` | yes |
+| `listSongs({ limit = 20, startingAfter? })` | `GET /songs` (one page) | yes |
+| `iterSongs({ pageSize = 100, startingAfter? })` | `GET /songs`, all pages (async iterator) | yes |
 | `deleteSong(id)` | `DELETE /songs/{id}` | yes |
 | `account()` | `GET /account` | yes |
+| `testWebhook(url)` | `POST /webhooks/test` | yes |
+| `webhookDeliveries({ limit = 20 })` | `GET /webhooks/deliveries` | yes |
 | `pricing()` | `GET /pricing` | no |
 | `examples()` | `GET /examples` | no |
 | `example(id, { view?, include? })` | `GET /examples/{id}` | no |
@@ -68,11 +71,47 @@ new Songbrain({ apiKey: "sb_live_…", timeoutMs: 60_000, maxRetries: 3 });
 
 Keep the key on your server. Never ship it in a browser or app bundle.
 
+## Test mode
+
+`analyze({ test: true })` is free, needs no audio and is done right away. It returns the Sugar Rush example analysis with your `title` and `externalRef`, `livemode: false` and `billing.type === "test"`. A `webhookUrl` still gets a signed `song.done`. Use it in CI:
+
+```ts
+const song = await sb.analyze({ test: true, title: "CI smoke test", externalRef: "build-123" });
+assert(song.status === "done" && song.livemode === false);
+```
+
+## Idempotency
+
+Every `analyze()` sends an `Idempotency-Key` (a random UUID) and reuses it when the client retries. So network errors, 5xx and 429 are retried for uploads too, and a retry never creates or charges a second song. Pass your own key to make retries across processes safe (same key within 24 h = same song):
+
+```ts
+await sb.analyze({ audioUrl: url, idempotencyKey: `order-${orderId}`, wait: false });
+```
+
+The same key with a different request throws a 409 `idempotency_key_reused`.
+
+## Pagination
+
+```ts
+let page = await sb.listSongs({ limit: 50 });                  // { data, has_more, next_cursor }
+page = await sb.listSongs({ limit: 50, startingAfter: page.next_cursor ?? undefined });
+
+for await (const item of sb.iterSongs()) console.log(item.id, item.status, item.livemode);
+```
+
+## Rate limits and request ids
+
+```ts
+await sb.account();
+console.log(sb.lastRateLimit); // { limit: 120, remaining: 119, reset: 0 }
+console.log(sb.lastRequestId); // "req_…"
+```
+
 ## Errors
 
-API errors throw `SongbrainError` with `status`, `code` and `message`. Subclasses: `AuthenticationError` (401), `InsufficientCredits` (402), `NotFound` (404), `RateLimited` (429, with `retryAfter` in seconds), `AnalysisFailed` (the song failed; credits are refunded) and `WaitTimeout` (the song keeps processing).
+API errors throw `SongbrainError` with `status`, `code`, `message` and `requestId` (`req_…`; the message ends with `(request_id: req_…)`, quote it when you write to support). Subclasses: `AuthenticationError` (401), `InsufficientCredits` (402), `NotFound` (404), `RateLimited` (429, with `retryAfter` in seconds), `AnalysisFailed` (the song failed; credits are refunded) and `WaitTimeout` (the song keeps processing).
 
-The client retries 429 and 5xx responses up to 3 times with backoff and honours `Retry-After` (up to 60 s). Uploads are only retried when nothing can have been created (429, 502, 503).
+The client retries network errors, 429 and 5xx responses up to 3 times with backoff and honours `Retry-After` (up to 60 s). Song creation is retried too, because it carries an `Idempotency-Key`.
 
 ```ts
 import { Songbrain, InsufficientCredits, RateLimited } from "songbrain";
@@ -99,12 +138,19 @@ app.post("/songbrain", express.raw({ type: "application/json" }), (req, res) => 
     return res.sendStatus(400);
   }
   const event = JSON.parse(req.body.toString("utf8"));
-  // event.type: "song.done" | "song.failed" | "account.low_balance"
+  // event.id: "evt_…" (same on every retry), event.type: "song.done" | "song.failed" | "account.low_balance" | "ping"
   res.sendStatus(200);
 });
 ```
 
 `verifyWebhook(rawBody, header, secret, toleranceSec = 300)` returns a boolean. `constructWebhookEvent()` verifies and parses in one step.
+
+Songbrain retries a failed delivery up to 10 times over about 3 days, with the same `event.id` every time. Store the ids you have handled and skip repeats. Check your receiver with a signed `ping`:
+
+```ts
+await sb.testWebhook("https://example.com/songbrain"); // { delivered, status_code, latency_ms, event_id }
+await sb.webhookDeliveries({ limit: 20 });              // the last delivery attempts
+```
 
 ## Pricing
 
