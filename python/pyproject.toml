@@ -1,0 +1,61 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "songbrain"
+version = "0.1.0"
+description = "Official Python client for the Songbrain API: song in, video plan out. Song DNA, beat grid, best moments, timed lyrics, story and a beat-synced shot plan."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.9"
+authors = [{ name = "Songbrain", email = "support@songbrain.ai" }]
+keywords = [
+    "music analysis api",
+    "ai music video",
+    "shot plan",
+    "beat detection",
+    "song structure",
+    "lyrics timestamps",
+    "songbrain",
+    "mcp",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Multimedia :: Sound/Audio :: Analysis",
+    "Topic :: Multimedia :: Video",
+    "Typing :: Typed",
+]
+dependencies = ["requests>=2.25"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7", "build>=1"]
+
+[project.urls]
+Homepage = "https://www.songbrain.ai/api-access"
+Documentation = "https://www.songbrain.ai/docs/api"
+Source = "https://github.com/LeonUli/songbrain"
+Issues = "https://github.com/LeonUli/songbrain/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/songbrain"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/songbrain", "tests", "README.md", "LICENSE", "pyproject.toml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "live: calls the real Songbrain API (no-key example endpoints). Skip with -m 'not live' or SONGBRAIN_OFFLINE=1.",
+]

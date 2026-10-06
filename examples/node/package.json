@@ -1,0 +1,8 @@
+{
+  "private": true,
+  "type": "module",
+  "description": "Songbrain Node examples",
+  "dependencies": {
+    "songbrain": "^0.1.0"
+  }
+}

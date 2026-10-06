@@ -1,0 +1,72 @@
+{
+  "name": "songbrain",
+  "version": "0.1.0",
+  "description": "Official TypeScript/JavaScript client for the Songbrain API: song in, video plan out. Song DNA, beat grid, best moments, timed lyrics, story and a beat-synced shot plan.",
+  "license": "MIT",
+  "author": "Songbrain <support@songbrain.ai> (https://www.songbrain.ai)",
+  "homepage": "https://www.songbrain.ai/api-access",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LeonUli/songbrain.git",
+    "directory": "js"
+  },
+  "bugs": {
+    "url": "https://github.com/LeonUli/songbrain/issues"
+  },
+  "keywords": [
+    "songbrain",
+    "music analysis api",
+    "music-analysis",
+    "ai music video",
+    "music-video",
+    "shot plan",
+    "beat detection",
+    "beat-grid",
+    "song structure",
+    "lyrics timestamps",
+    "audio-analysis",
+    "mcp"
+  ],
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "pretest": "npm run build",
+    "test": "node --test test/webhooks.test.mjs test/client.test.mjs test/live.test.mjs",
+    "prepublishOnly": "npm run typecheck && npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^18.19.0",
+    "tsup": "^8.3.0",
+    "typescript": "^5.6.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.LeonUli/songbrain",
+  "title": "Songbrain",
+  "description": "Song in, video plan out: beat grid, best moments, timed lyrics, story and a beat-synced shot plan.",
+  "version": "1.0.0",
+  "websiteUrl": "https://www.songbrain.ai/docs/api",
+  "repository": {
+    "url": "https://github.com/LeonUli/songbrain",
+    "source": "github"
+  },
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://api.songbrain.ai/mcp",
+      "headers": [
+        {
+          "name": "X-API-Key",
+          "description": "Optional Songbrain API key (sb_live_...) to analyse your own songs. Without it, the example tools work. Get one at https://app.songbrain.ai/developers",
+          "isRequired": false,
+          "isSecret": true
+        }
+      ]
+    }
+  ]
+}

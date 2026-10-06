@@ -1,0 +1,33 @@
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+js/dist/
+*.tgz
+npm-debug.log*
+
+# MCP publisher
+mcp-publisher
+mcp-publisher.exe
+.mcpregistry_*

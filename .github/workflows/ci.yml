@@ -1,0 +1,114 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: Python ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.11", "3.13"]
+    defaults:
+      run:
+        working-directory: python
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]" mypy types-requests twine
+      - name: Type check
+        run: python -m mypy --strict src/songbrain
+      - name: Unit tests
+        run: python -m pytest -m "not live" -q
+      - name: Build
+        run: |
+          python -m build
+          python -m twine check --strict dist/*
+      - name: Install the wheel in a clean venv
+        run: |
+          python -m venv /tmp/wheel-venv
+          /tmp/wheel-venv/bin/pip install dist/*.whl
+          /tmp/wheel-venv/bin/python -c "import songbrain; print(songbrain.__version__)"
+
+  js:
+    name: Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["18", "20", "22"]
+    defaults:
+      run:
+        working-directory: js
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: js/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - name: Build and unit tests
+        run: npm test
+        env:
+          SONGBRAIN_OFFLINE: "1"
+      - name: Pack
+        run: npm pack --dry-run
+
+  live:
+    name: Live tests (no-key example endpoints)
+    runs-on: ubuntu-latest
+    needs: [python, js]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - name: Python live tests
+        working-directory: python
+        run: |
+          python -m pip install -e ".[dev]"
+          python -m pytest -m live -q
+      - name: JS live tests
+        working-directory: js
+        run: |
+          npm ci
+          npm test
+      - name: Examples run against the example endpoints
+        run: |
+          python examples/python/shot_plan_to_prompts.py --example old-truck-home | head -3
+          cd js && npm pack --pack-destination /tmp >/dev/null
+          mkdir -p /tmp/node-example && cp ../examples/node/shot-plan-to-prompts.mjs /tmp/node-example/
+          cd /tmp/node-example && echo '{"private":true,"type":"module"}' > package.json
+          npm install --no-save /tmp/songbrain-*.tgz
+          node shot-plan-to-prompts.mjs --example old-truck-home | head -3
+
+  mcp:
+    name: Validate server.json
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install mcp-publisher
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+      - run: ./mcp-publisher validate server.json

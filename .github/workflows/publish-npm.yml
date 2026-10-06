@@ -1,0 +1,43 @@
+name: Publish to npm
+
+# Push a tag like `js-v0.1.0` to publish js/ to https://www.npmjs.com/package/songbrain
+# with provenance. Needs the repository secret NPM_TOKEN (a granular access token
+# with read and write access to the songbrain package).
+
+on:
+  push:
+    tags: ["js-v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # required for npm provenance
+    defaults:
+      run:
+        working-directory: js
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+      - name: Check that the tag matches the package version
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#js-v}"
+          PKG_VERSION="$(node -p 'require("./package.json").version')"
+          echo "tag=$TAG_VERSION package=$PKG_VERSION"
+          test "$TAG_VERSION" = "$PKG_VERSION"
+      - run: npm ci
+      - run: npm run typecheck
+      - name: Build and test
+        run: npm test
+        env:
+          SONGBRAIN_OFFLINE: "1"
+      - run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
