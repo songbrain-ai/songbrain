@@ -47,13 +47,16 @@ Every method returns the JSON body of the response as a `dict`. Types for editor
 
 | Method | API call | Key |
 |---|---|---|
-| `analyze(file=None, *, audio_url=None, title=None, artist=None, webhook_url=None, external_ref=None, filename=None, wait=True, poll_interval=5, timeout=300)` | `POST /songs`, then polls `GET /songs/{id}` | yes |
+| `analyze(file=None, *, audio_url=None, title=None, artist=None, webhook_url=None, external_ref=None, filename=None, test=False, idempotency_key=None, wait=True, poll_interval=5, timeout=300)` | `POST /songs`, then polls `GET /songs/{id}` | yes |
 | `wait_for(song_id, *, poll_interval=5, timeout=300)` | polls `GET /songs/{id}` | yes |
 | `get_song(id, view=None, include=None)` | `GET /songs/{id}` | yes |
 | `shot_plan(id)` | `GET /songs/{id}/shot-plan` | yes |
-| `list_songs(limit=20)` | `GET /songs` | yes |
+| `list_songs(limit=20, starting_after=None)` | `GET /songs` (one page) | yes |
+| `iter_songs(page_size=100, starting_after=None)` | `GET /songs`, all pages | yes |
 | `delete_song(id)` | `DELETE /songs/{id}` | yes |
 | `account()` | `GET /account` | yes |
+| `test_webhook(url)` | `POST /webhooks/test` | yes |
+| `webhook_deliveries(limit=20)` | `GET /webhooks/deliveries` | yes |
 | `pricing()` | `GET /pricing` | no |
 | `examples()` | `GET /examples` | no |
 | `example(id, view=None, include=None)` | `GET /examples/{id}` | no |
@@ -67,9 +70,46 @@ Every method returns the JSON body of the response as a `dict`. Types for editor
 sb = Songbrain(api_key="sb_live_…", timeout=60, max_retries=3)
 ```
 
+## Test mode
+
+`analyze(test=True)` is free, needs no audio and is done right away. It returns the Sugar Rush example analysis with your `title` and `external_ref`, `"livemode": False` and `billing.type == "test"`. A `webhook_url` still gets a signed `song.done`. Use it in CI:
+
+```python
+song = sb.analyze(test=True, title="CI smoke test", external_ref="build-123")
+assert song["status"] == "done" and song["livemode"] is False
+```
+
+## Idempotency
+
+Every `analyze()` sends an `Idempotency-Key` (a uuid4) and reuses it when the client retries. So network errors, 5xx and 429 are retried for uploads too, and a retry never creates or charges a second song. Pass your own key to make retries across processes safe (same key within 24 h = same song):
+
+```python
+sb.analyze(audio_url=url, idempotency_key=f"order-{order_id}", wait=False)
+```
+
+The same key with a different request raises a 409 `idempotency_key_reused`.
+
+## Pagination
+
+```python
+page = sb.list_songs(limit=50)                       # {"data", "has_more", "next_cursor"}
+page = sb.list_songs(limit=50, starting_after=page["next_cursor"])
+
+for item in sb.iter_songs():                         # all songs, newest first
+    print(item["id"], item["status"], item["livemode"])
+```
+
+## Rate limits and request ids
+
+```python
+sb.account()
+print(sb.last_rate_limit)   # {"limit": 120, "remaining": 119, "reset": 0}
+print(sb.last_request_id)   # "req_…"
+```
+
 ## Errors
 
-API errors raise `SongbrainError` with `.status`, `.code` and `.message`. Subclasses:
+API errors raise `SongbrainError` with `.status`, `.code`, `.message` and `.request_id` (`req_…`, also in `str(error)`; quote it when you write to support). Subclasses:
 
 | Exception | When |
 |---|---|
@@ -80,7 +120,7 @@ API errors raise `SongbrainError` with `.status`, `.code` and `.message`. Subcla
 | `AnalysisFailed` | the song was accepted but failed (credits are refunded) |
 | `WaitTimeout` | `analyze(wait=True)` gave up; the song keeps processing |
 
-The client retries 429 and 5xx responses up to 3 times with backoff and honours `Retry-After` (up to 60 s). Uploads are only retried when nothing can have been created (429, 502, 503).
+The client retries network errors, 429 and 5xx responses up to 3 times with backoff and honours `Retry-After` (up to 60 s). Song creation is retried too, because it carries an `Idempotency-Key`.
 
 ```python
 from songbrain import Songbrain, InsufficientCredits, RateLimited
@@ -104,7 +144,16 @@ ok = webhooks.verify(raw_body, request.headers["Songbrain-Signature"], secret)  
 event = webhooks.construct_event(raw_body, header, secret)  # verified dict, or raises
 ```
 
-The default tolerance is 300 s. A full Flask receiver is in [examples/python/webhook_server.py](https://github.com/songbrain-ai/songbrain/blob/main/examples/python/webhook_server.py).
+The default tolerance is 300 s.
+
+Every event has an `id` (`evt_…`) that stays the same when Songbrain retries it (up to 10 attempts over about 3 days). Store the ids you have handled and skip repeats. Check your receiver with a signed `ping`:
+
+```python
+sb.test_webhook("https://example.com/songbrain")   # {"delivered", "status_code", "latency_ms", "event_id"}
+sb.webhook_deliveries(limit=20)                    # the last delivery attempts
+```
+
+A full FastAPI receiver with dedupe is in [cookbook/webhook_receiver_fastapi.py](https://github.com/songbrain-ai/songbrain/blob/main/cookbook/webhook_receiver_fastapi.py), a Flask one in [examples/python/webhook_server.py](https://github.com/songbrain-ai/songbrain/blob/main/examples/python/webhook_server.py).
 
 ## Pricing
 

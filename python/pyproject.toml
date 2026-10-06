@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "songbrain"
-version = "0.1.1"
+version = "0.2.0"
 description = "Official Python client for the Songbrain API: song in, video plan out. Song DNA, beat grid, best moments, timed lyrics, story and a beat-synced shot plan."
 readme = "README.md"
 license = "MIT"

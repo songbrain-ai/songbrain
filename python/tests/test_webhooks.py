@@ -74,3 +74,10 @@ def test_construct_event(monkeypatch):
     assert event["data"]["id"] == "8f0c"
     with pytest.raises(WebhookVerificationError):
         construct_event(BODY, _header(secret="nope"), SECRET)
+
+
+def test_construct_event_keeps_event_id_and_ping(monkeypatch):
+    monkeypatch.setattr(webhooks.time, "time", lambda: NOW)
+    body = json.dumps({"id": "evt_0123", "type": "ping", "created": NOW, "livemode": True, "data": {}}).encode()
+    event = construct_event(body, sign(body, SECRET, NOW), SECRET)
+    assert event["id"] == "evt_0123" and event["type"] == "ping" and event["livemode"] is True

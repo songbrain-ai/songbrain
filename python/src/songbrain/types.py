@@ -50,11 +50,16 @@ __all__ = [
     "ExampleList",
     "Account",
     "Pricing",
+    "RateLimitInfo",
+    "WebhookEvent",
+    "WebhookTestResult",
+    "WebhookDelivery",
+    "WebhookDeliveryList",
 ]
 
 
 class Billing(TypedDict, total=False):
-    type: str  # "free" or "credits"
+    type: str  # "free", "credits" or "test"
     credits: int
 
 
@@ -303,6 +308,7 @@ class ShotPlan(TypedDict, total=False):
 class ErrorInfo(TypedDict, total=False):
     code: str
     message: str
+    request_id: str  # "req_…", also in the Songbrain-Request-Id header
 
 
 class Song(TypedDict, total=False):
@@ -326,6 +332,7 @@ class Song(TypedDict, total=False):
     created_at: Optional[str]
     external_ref: Optional[str]
     billing: Billing
+    livemode: bool  # False for test-mode songs
 
 
 class SongCreated(TypedDict, total=False):
@@ -338,6 +345,7 @@ class SongCreated(TypedDict, total=False):
     billing: Billing
     external_ref: Optional[str]
     url: str
+    livemode: bool
 
 
 class SongShotPlan(TypedDict, total=False):
@@ -354,11 +362,14 @@ class SongListItem(TypedDict, total=False):
     external_ref: Optional[str]
     created_at: Optional[str]
     billing: Billing
+    livemode: bool
 
 
 class SongList(TypedDict, total=False):
     object: str  # "list"
     data: List[SongListItem]
+    has_more: bool
+    next_cursor: Optional[str]  # pass as starting_after for the next page
 
 
 class DeleteResult(TypedDict, total=False):
@@ -411,3 +422,45 @@ class Pricing(TypedDict, total=False):
     volume: str
     limits: Dict[str, Any]
     examples_are_free: bool
+
+
+class RateLimitInfo(TypedDict):
+    """From the ``X-RateLimit-*`` headers. See :attr:`songbrain.Songbrain.last_rate_limit`."""
+
+    limit: int  # requests per minute
+    remaining: Optional[int]
+    reset: Optional[int]  # seconds until the window has room again
+
+
+class WebhookEvent(TypedDict, total=False):
+    """A webhook body. ``id`` stays the same across retries of one event: dedupe on it."""
+
+    id: str  # "evt_…"
+    type: str  # "song.done", "song.failed", "account.low_balance" or "ping"
+    created: int  # Unix seconds
+    livemode: bool
+    data: Dict[str, Any]
+
+
+class WebhookTestResult(TypedDict, total=False):
+    delivered: bool
+    status_code: Optional[int]
+    latency_ms: int
+    event_id: str
+
+
+class WebhookDelivery(TypedDict, total=False):
+    event_id: str
+    type: str
+    song_id: Optional[str]
+    url: str
+    attempt: int
+    status_code: Optional[int]
+    delivered: bool
+    latency_ms: Optional[int]
+    created_at: str
+
+
+class WebhookDeliveryList(TypedDict, total=False):
+    object: str  # "list"
+    data: List[WebhookDelivery]

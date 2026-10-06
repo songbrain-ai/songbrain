@@ -7,6 +7,11 @@ Songbrain signs every webhook with the header::
 where ``v1`` is the HMAC-SHA256 of ``"<t>.<raw body>"`` keyed with the
 webhook secret of the API key that created the song (shown once when the key
 is created). Always verify against the raw request body, before parsing JSON.
+
+Every event has an ``id`` (``evt_…``, also sent as the ``Songbrain-Event-Id``
+header) that stays the same across retries. Songbrain retries failed
+deliveries up to 10 times over about 3 days, so the same event can arrive
+more than once: store the ids you have handled and skip repeats.
 """
 
 import hashlib
@@ -88,8 +93,10 @@ def construct_event(
 ) -> Dict[str, Any]:
     """Verify the signature and return the parsed event.
 
-    The event looks like ``{"type": "song.done", "created": 1791200000, "data": {...}}``.
-    Types: ``song.done``, ``song.failed``, ``account.low_balance``.
+    The event looks like
+    ``{"id": "evt_…", "type": "song.done", "created": 1791200000, "livemode": true, "data": {...}}``.
+    Types: ``song.done``, ``song.failed``, ``account.low_balance`` and ``ping`` (from
+    :meth:`songbrain.Songbrain.test_webhook`). Dedupe on ``event["id"]``: retries reuse it.
 
     Raises:
         WebhookVerificationError: if the signature is not valid.

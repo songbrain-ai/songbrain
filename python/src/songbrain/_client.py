@@ -3,8 +3,23 @@ import mimetypes
 import os
 import random
 import time
+import uuid
 from email.utils import parsedate_to_datetime
-from typing import IO, Any, Callable, Dict, Literal, Mapping, Optional, Sequence, Tuple, Union, cast, overload
+from typing import (
+    IO,
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    Literal,
+    Mapping,
+    Optional,
+    Sequence,
+    Tuple,
+    Union,
+    cast,
+    overload,
+)
 from urllib.parse import quote
 
 import requests
@@ -24,13 +39,20 @@ from .types import (
     DeleteResult,
     ExampleList,
     Pricing,
+    RateLimitInfo,
     Song,
     SongCreated,
     SongList,
+    SongListItem,
     SongShotPlan,
+    WebhookDeliveryList,
+    WebhookTestResult,
 )
 
 __all__ = ["Songbrain", "DEFAULT_BASE_URL", "SECTIONS", "FileInput", "Include"]
+
+REQUEST_ID_HEADER = "Songbrain-Request-Id"
+IDEMPOTENCY_HEADER = "Idempotency-Key"
 
 DEFAULT_BASE_URL = "https://api.songbrain.ai/v1"
 
@@ -79,6 +101,26 @@ def _retry_after_seconds(value: Optional[str]) -> Optional[float]:
         return None
 
 
+def _int_header(value: Optional[str]) -> Optional[int]:
+    if value is None:
+        return None
+    try:
+        return int(float(value))
+    except ValueError:
+        return None
+
+
+def _rate_limit_from(headers: Mapping[str, str]) -> Optional[RateLimitInfo]:
+    limit = _int_header(headers.get("X-RateLimit-Limit"))
+    if limit is None:
+        return None
+    return {
+        "limit": limit,
+        "remaining": _int_header(headers.get("X-RateLimit-Remaining")),
+        "reset": _int_header(headers.get("X-RateLimit-Reset")),
+    }
+
+
 def _join_include(include: Optional[Include]) -> Optional[str]:
     if include is None:
         return None
@@ -95,10 +137,16 @@ class Songbrain:
             The example endpoints work without a key.
         base_url: API base URL. Defaults to ``SONGBRAIN_BASE_URL`` or ``https://api.songbrain.ai/v1``.
         timeout: Timeout in seconds for each HTTP request (uploads included).
-        max_retries: How often to retry 429 and 5xx responses, with backoff (default 3).
+        max_retries: How often to retry network errors, 429 and 5xx responses, with backoff (default 3).
+            Song creation is retried too, because every create sends an ``Idempotency-Key``.
         session: An optional ``requests.Session`` to reuse.
 
     Every method returns the JSON body of the response as a ``dict``.
+
+    Attributes:
+        last_rate_limit: ``{"limit", "remaining", "reset"}`` from the ``X-RateLimit-*`` headers of the
+            last response that had them (``None`` before that). ``reset`` is seconds until the window has room.
+        last_request_id: The ``Songbrain-Request-Id`` of the last response (``None`` before the first one).
     """
 
     def __init__(
@@ -117,6 +165,8 @@ class Songbrain:
         self._session = session or requests.Session()
         self._own_session = session is None
         self._sleep: Callable[[float], None] = time.sleep
+        self.last_rate_limit: Optional[RateLimitInfo] = None
+        self.last_request_id: Optional[str] = None
 
     # ── lifecycle ──────────────────────────────────────────────────────────
     def close(self) -> None:
@@ -145,6 +195,8 @@ class Songbrain:
         webhook_url: Optional[str] = ...,
         external_ref: Optional[str] = ...,
         filename: Optional[str] = ...,
+        test: bool = ...,
+        idempotency_key: Optional[str] = ...,
         wait: Literal[True] = ...,
         poll_interval: float = ...,
         timeout: float = ...,
@@ -161,6 +213,8 @@ class Songbrain:
         webhook_url: Optional[str] = ...,
         external_ref: Optional[str] = ...,
         filename: Optional[str] = ...,
+        test: bool = ...,
+        idempotency_key: Optional[str] = ...,
         wait: Literal[False],
         poll_interval: float = ...,
         timeout: float = ...,
@@ -176,14 +230,16 @@ class Songbrain:
         webhook_url: Optional[str] = None,
         external_ref: Optional[str] = None,
         filename: Optional[str] = None,
+        test: bool = False,
+        idempotency_key: Optional[str] = None,
         wait: bool = True,
         poll_interval: float = 5.0,
         timeout: float = 300.0,
     ) -> Union[Song, SongCreated]:
         """Analyse a song from a local file or a public URL.
 
-        Pass exactly one of ``file`` (a path, bytes or an open binary file) or ``audio_url``.
-        The analysis typically takes 60-90 seconds.
+        Pass exactly one of ``file`` (a path, bytes or an open binary file) or ``audio_url``
+        (or neither with ``test=True``). The analysis typically takes 60-90 seconds.
 
         Args:
             file: Path, bytes or binary file object. MP3, WAV, FLAC, M4A, AAC, OGG or AIFF, up to 100 MB, 30 s to 10 min.
@@ -194,6 +250,12 @@ class Songbrain:
             external_ref: Optional id of your own, echoed back in responses and webhooks.
             filename: File name sent with an upload. The extension must match the audio format.
                 Taken from the path when ``file`` is a path; guessed from the bytes otherwise.
+            test: Test mode: free, never charged, no audio needed. The song is ``done`` right away and
+                returns the Sugar Rush example analysis with ``livemode: false``. ``song.done`` is still
+                sent to ``webhook_url``. Made for CI and integration tests.
+            idempotency_key: Sent as ``Idempotency-Key``. A random one (uuid4) is generated per call and
+                reused across the client's own retries, so a retried create never makes a second song.
+                Pass your own (e.g. your job id) to make retries across processes safe too (24 h window).
             wait: If ``True`` (default), poll until the song is done and return the full document.
                 If ``False``, return the 202 body (``{id, status: "processing", eta_sec, billing}``) right away.
             poll_interval: Seconds between status checks while waiting.
@@ -204,21 +266,31 @@ class Songbrain:
             WaitTimeout: The song was not done within ``timeout``. It keeps processing on the server.
             InsufficientCredits, RateLimited, SongbrainError: The API rejected the request.
         """
-        if (file is None) == (audio_url is None):
+        if file is not None and audio_url is not None:
             raise ValueError("Pass exactly one of `file` or `audio_url`.")
+        if file is None and audio_url is None and not test:
+            raise ValueError("Pass exactly one of `file` or `audio_url` (or test=True).")
 
         fields: Dict[str, str] = {}
         for key, value in (("title", title), ("artist", artist), ("webhook_url", webhook_url), ("external_ref", external_ref)):
             if value is not None:
                 fields[key] = value
+        headers = {IDEMPOTENCY_HEADER: idempotency_key or str(uuid.uuid4())}
 
-        if audio_url is not None:
-            created = self._request("POST", "/songs", json={"audio_url": audio_url, **fields})
+        if file is None:
+            body: Dict[str, Any] = dict(fields)
+            if audio_url is not None:
+                body = {"audio_url": audio_url, **fields}
+            if test:
+                body["test"] = True
+            created = self._request("POST", "/songs", json=body, headers=headers)
         else:
-            fh, name, close_after = self._open_upload(cast(FileInput, file), filename)
+            if test:
+                fields["test"] = "true"
+            fh, name, close_after = self._open_upload(file, filename)
             try:
                 mime = mimetypes.guess_type(name)[0] or "application/octet-stream"
-                created = self._request("POST", "/songs", data=fields, files={"file": (name, fh, mime)})
+                created = self._request("POST", "/songs", data=fields, files={"file": (name, fh, mime)}, headers=headers)
             finally:
                 if close_after:
                     fh.close()
@@ -269,9 +341,30 @@ class Songbrain:
         """Get only the story and the shot plan of a song: ``{id, status, song, story, shot_plan}``."""
         return cast(SongShotPlan, self._request("GET", f"/songs/{quote(song_id, safe='')}/shot-plan"))
 
-    def list_songs(self, limit: int = 20) -> SongList:
-        """List your songs, newest first: ``{object: "list", data: [...]}``. ``limit`` is 1-100."""
-        return cast(SongList, self._request("GET", "/songs", params={"limit": limit}))
+    def list_songs(self, limit: int = 20, starting_after: Optional[str] = None) -> SongList:
+        """One page of your songs, newest first: ``{object: "list", data, has_more, next_cursor}``.
+
+        Args:
+            limit: Page size, 1-100.
+            starting_after: A song id (usually the previous page's ``next_cursor``); returns the songs after it.
+        """
+        params = {"limit": limit, "starting_after": starting_after}
+        return cast(SongList, self._request("GET", "/songs", params=params))
+
+    def iter_songs(self, page_size: int = 100, starting_after: Optional[str] = None) -> Iterator[SongListItem]:
+        """Iterate over all your songs, newest first, fetching pages of ``page_size`` as needed.
+
+            for item in sb.iter_songs():
+                print(item["id"], item["status"])
+        """
+        cursor = starting_after
+        while True:
+            page = self.list_songs(limit=page_size, starting_after=cursor)
+            data = page.get("data") or []
+            yield from data
+            cursor = page.get("next_cursor") or (data[-1]["id"] if data else None)
+            if not page.get("has_more") or not cursor:
+                return
 
     def delete_song(self, song_id: str) -> DeleteResult:
         """Delete a song's audio and analysis now. Raises a 409 ``still_processing`` error while it runs."""
@@ -285,6 +378,23 @@ class Songbrain:
     def pricing(self) -> Pricing:
         """Prices and limits. No key needed."""
         return cast(Pricing, self._request("GET", "/pricing"))
+
+    # ── webhooks ───────────────────────────────────────────────────────────
+    def test_webhook(self, url: str) -> WebhookTestResult:
+        """Send a signed ``ping`` event to ``url`` right now.
+
+        Returns ``{delivered, status_code, latency_ms, event_id}``. Use it to check your receiver
+        (signature check, 2xx answer) before you start real songs. Signature verification works
+        exactly as for ``song.done``.
+        """
+        return cast(WebhookTestResult, self._request("POST", "/webhooks/test", json={"url": url}))
+
+    def webhook_deliveries(self, limit: int = 20) -> WebhookDeliveryList:
+        """The last webhook delivery attempts for your account, newest first.
+
+        Each item: ``{event_id, type, song_id, url, attempt, status_code, delivered, latency_ms, created_at}``.
+        """
+        return cast(WebhookDeliveryList, self._request("GET", "/webhooks/deliveries", params={"limit": limit}))
 
     # ── examples (no key) ──────────────────────────────────────────────────
     def examples(self) -> ExampleList:
@@ -355,10 +465,14 @@ class Songbrain:
         json: Optional[Any] = None,
         data: Optional[Mapping[str, str]] = None,
         files: Optional[Dict[str, Tuple[str, IO[bytes], str]]] = None,
+        headers: Optional[Mapping[str, str]] = None,
     ) -> Dict[str, Any]:
         url = self.base_url + path
         clean_params = {k: v for k, v in (params or {}).items() if v is not None} or None
-        idempotent = method in ("GET", "HEAD", "DELETE")
+        has_key = bool(headers and headers.get(IDEMPOTENCY_HEADER))
+        # A POST with an Idempotency-Key is safe to resend: the API returns the first answer again.
+        idempotent = method in ("GET", "HEAD", "DELETE") or has_key
+        all_headers = {**self._headers(), **(headers or {})}
         # Remember where each upload starts, so a retry sends the whole file again.
         starts: Dict[str, int] = {}
         for key, (_, fh, _) in (files or {}).items():
@@ -379,17 +493,18 @@ class Songbrain:
                     json=json,
                     data=data,
                     files=files,
-                    headers=self._headers(),
+                    headers=all_headers,
                     timeout=self.timeout,
                 )
             except (requests.ConnectionError, requests.Timeout) as exc:
-                # Only safe to resend if the request cannot have created anything.
+                # Only safe to resend if it cannot have created anything, or carries an Idempotency-Key.
                 if (idempotent or isinstance(exc, requests.ConnectTimeout)) and attempt < self.max_retries:
                     self._sleep(self._backoff(attempt))
                     attempt += 1
                     continue
                 raise SongbrainError(0, "connection_error", str(exc)) from exc
 
+            self._remember(resp)
             if resp.status_code < 400:
                 if not resp.content:
                     return {}
@@ -400,22 +515,32 @@ class Songbrain:
 
             error = self._error_from(resp)
             status = resp.status_code
-            # 429 never started any work. For POST, only retry 5xx that come from the
-            # gateway before the request reached the API (502/503).
-            retryable = status == 429 or (status >= 500 and (idempotent or status in (502, 503)))
+            # 429 never started any work. For a POST without Idempotency-Key, only retry 5xx
+            # that come from the gateway before the request reached the API (502/503).
+            in_progress = has_key and status == 409 and error.code == "idempotency_in_progress"
+            retryable = status == 429 or in_progress or (status >= 500 and (idempotent or status in (502, 503)))
             if retryable and attempt < self.max_retries:
                 wait = error.retry_after if isinstance(error, RateLimited) and error.retry_after is not None else None
                 delay = self._backoff(attempt) if wait is None else wait
+                if in_progress:
+                    delay = max(1.0, delay)
                 if delay <= _MAX_RETRY_WAIT:
                     self._sleep(delay)
                     attempt += 1
                     continue
             raise error
 
+    def _remember(self, resp: requests.Response) -> None:
+        self.last_request_id = resp.headers.get(REQUEST_ID_HEADER) or None
+        info = _rate_limit_from(resp.headers)
+        if info is not None:
+            self.last_rate_limit = info
+
     @staticmethod
     def _error_from(resp: requests.Response) -> SongbrainError:
         status = resp.status_code
         body: Optional[Dict[str, Any]] = None
+        request_id = resp.headers.get(REQUEST_ID_HEADER) or None
         code = f"http_{status}"
         message = (resp.text or resp.reason or "").strip()[:500] or f"HTTP {status}"
         try:
@@ -428,10 +553,12 @@ class Songbrain:
             if isinstance(err, dict):
                 code = str(err.get("code") or code)
                 message = str(err.get("message") or message)
-            elif "detail" in parsed:  # request validation (422)
+                request_id = str(err.get("request_id") or "") or request_id
+            elif "detail" in parsed:  # request validation (422), older API versions
                 code = "validation_error"
                 message = str(parsed["detail"])
         if status == 429:
-            return RateLimited(status, code, message, body, _retry_after_seconds(resp.headers.get("Retry-After")))
+            retry_after = _retry_after_seconds(resp.headers.get("Retry-After"))
+            return RateLimited(status, code, message, body, retry_after, request_id=request_id)
         cls = _ERROR_CLASSES.get(status, SongbrainError)
-        return cls(status, code, message, body)
+        return cls(status, code, message, body, request_id=request_id)

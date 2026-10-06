@@ -1,8 +1,10 @@
 """Exceptions raised by the Songbrain client.
 
-Every API error has the shape ``{"error": {"code": "...", "message": "..."}}``.
+Every API error has the shape
+``{"error": {"code": "...", "message": "...", "request_id": "req_..."}}``.
 The client turns it into a :class:`SongbrainError` (or a subclass) that
-carries the HTTP status, the error code and the message.
+carries the HTTP status, the error code, the message and the request id.
+Quote the request id when you contact support.
 """
 
 from typing import Any, Dict, Optional
@@ -26,6 +28,8 @@ class SongbrainError(Exception):
         code: Machine-readable error code, e.g. ``"invalid_url"`` or ``"rate_limited"``.
         message: Human-readable message.
         body: The parsed response body, when there was one.
+        request_id: The ``Songbrain-Request-Id`` of the failed request (``req_…``), when there was one.
+            ``str(error)`` includes it.
     """
 
     def __init__(
@@ -34,15 +38,24 @@ class SongbrainError(Exception):
         code: str,
         message: str,
         body: Optional[Dict[str, Any]] = None,
+        *,
+        request_id: Optional[str] = None,
     ) -> None:
-        super().__init__(f"[{status}] {code}: {message}" if status else f"{code}: {message}")
+        text = f"[{status}] {code}: {message}" if status else f"{code}: {message}"
+        if request_id:
+            text += f" (request_id: {request_id})"
+        super().__init__(text)
         self.status = status
         self.code = code
         self.message = message
         self.body = body
+        self.request_id = request_id
 
     def __repr__(self) -> str:
-        return f"{type(self).__name__}(status={self.status!r}, code={self.code!r}, message={self.message!r})"
+        return (
+            f"{type(self).__name__}(status={self.status!r}, code={self.code!r}, "
+            f"message={self.message!r}, request_id={self.request_id!r})"
+        )
 
 
 class AuthenticationError(SongbrainError):
@@ -71,8 +84,10 @@ class RateLimited(SongbrainError):
         message: str,
         body: Optional[Dict[str, Any]] = None,
         retry_after: Optional[float] = None,
+        *,
+        request_id: Optional[str] = None,
     ) -> None:
-        super().__init__(status, code, message, body)
+        super().__init__(status, code, message, body, request_id=request_id)
         self.retry_after = retry_after
 
 
