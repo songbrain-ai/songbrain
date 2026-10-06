@@ -117,18 +117,6 @@ export interface Timeline {
   lyric_hooks: LyricHook[] | null;
 }
 
-export interface PlatformFit {
-  tiktok: number;
-  instagram_reels: number;
-  youtube_shorts: number;
-}
-
-export interface CaptionIdeas {
-  curiosity?: string;
-  hype?: string;
-  storytelling?: string;
-}
-
 export interface BestMoment {
   /** 1 = strongest. */
   rank: number;
@@ -139,16 +127,14 @@ export interface BestMoment {
   kind: string;
   /** 0-100. */
   score: number;
-  why: string;
-  explanation: string;
-  judge_note: string;
+  /** One sentence: why this moment works. */
+  reason: string | null;
+  /** The measured audio signals behind the pick, e.g. "strong sustained energy after impact". */
+  signals: string[] | null;
   /** The words sung inside the window. */
   sung: string | null;
-  platform_fit: PlatformFit;
   /** Beats inside the window. Omitted in view=summary. */
   beat_grid_sec?: number[];
-  caption_ideas: CaptionIdeas | null;
-  hashtags: string[] | null;
 }
 
 export interface Word {

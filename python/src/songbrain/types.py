@@ -21,8 +21,6 @@ __all__ = [
     "VocalChange",
     "LyricHook",
     "Timeline",
-    "PlatformFit",
-    "CaptionIdeas",
     "BestMoment",
     "Word",
     "LyricLine",
@@ -140,18 +138,6 @@ class Timeline(TypedDict, total=False):
     lyric_hooks: Optional[List[LyricHook]]
 
 
-class PlatformFit(TypedDict, total=False):
-    tiktok: float
-    instagram_reels: float
-    youtube_shorts: float
-
-
-class CaptionIdeas(TypedDict, total=False):
-    curiosity: str
-    hype: str
-    storytelling: str
-
-
 class BestMoment(TypedDict, total=False):
     rank: int  # 1 = strongest
     start_sec: float
@@ -160,14 +146,10 @@ class BestMoment(TypedDict, total=False):
     duration_sec: float
     kind: str
     score: int  # 0-100
-    why: str
-    explanation: str
-    judge_note: str
+    reason: Optional[str]  # one sentence: why this moment works
+    signals: Optional[List[str]]  # measured audio signals behind the pick
     sung: Optional[str]
-    platform_fit: PlatformFit
     beat_grid_sec: List[float]  # omitted in view=summary
-    caption_ideas: Optional[CaptionIdeas]
-    hashtags: Optional[List[str]]
 
 
 class Word(TypedDict, total=False):
