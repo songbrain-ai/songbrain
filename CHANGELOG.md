@@ -4,7 +4,7 @@ All notable changes to the Songbrain SDKs in this repository. The format follows
 
 The Python package (`songbrain` on PyPI, tags `py-v*`) and the npm package (`songbrain` on npm, tags `js-v*`) are released together when they share a version. Changes to the API itself are in the [API changelog](https://www.songbrain.ai/docs/api/changelog).
 
-## [0.2.0] - Unreleased
+## [0.2.0] - 2026-10-07
 
 For API 1.1. Everything is backwards compatible with 0.1.x code.
 
