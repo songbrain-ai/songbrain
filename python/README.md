@@ -163,7 +163,7 @@ A full FastAPI receiver with dedupe is in [cookbook/webhook_receiver_fastapi.py]
 
 - API docs: https://www.songbrain.ai/docs/api
 - OpenAPI: https://api.songbrain.ai/v1/openapi.json
-- MCP server: https://api.songbrain.ai/mcp
+- MCP server: https://api.songbrain.ai/v1/mcp
 - Get a key: https://app.songbrain.ai/developers
 - Source: https://github.com/songbrain-ai/songbrain
 

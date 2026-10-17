@@ -218,10 +218,10 @@ Receivers: [cookbook/webhook_receiver_fastapi.py](cookbook/webhook_receiver_fast
 
 ## MCP
 
-Songbrain runs a remote MCP server at `https://api.songbrain.ai/mcp` (streamable HTTP). It works in Claude Code, Claude Desktop, Cursor and other MCP clients. Without a key you get the example tools. With a key you can analyse songs from a URL.
+Songbrain runs a remote MCP server at `https://api.songbrain.ai/v1/mcp` (streamable HTTP). It works in Claude Code, Claude Desktop, Cursor and other MCP clients. Without a key you get the example tools. With a key you can analyse songs from a URL.
 
 ```bash
-claude mcp add --transport http songbrain https://api.songbrain.ai/mcp \
+claude mcp add --transport http songbrain https://api.songbrain.ai/v1/mcp \
   --header "Authorization: Bearer sb_live_…"
 ```
 

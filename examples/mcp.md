@@ -3,7 +3,7 @@
 Songbrain runs a remote [Model Context Protocol](https://modelcontextprotocol.io) server:
 
 ```
-https://api.songbrain.ai/mcp
+https://api.songbrain.ai/v1/mcp
 ```
 
 - Transport: streamable HTTP (stateless JSON-RPC over `POST`).
@@ -30,13 +30,13 @@ Over MCP, songs come from a public URL (`analyze_song`). To upload local files, 
 Without a key:
 
 ```bash
-claude mcp add --transport http songbrain https://api.songbrain.ai/mcp
+claude mcp add --transport http songbrain https://api.songbrain.ai/v1/mcp
 ```
 
 With a key:
 
 ```bash
-claude mcp add --transport http songbrain https://api.songbrain.ai/mcp \
+claude mcp add --transport http songbrain https://api.songbrain.ai/v1/mcp \
   --header "Authorization: Bearer sb_live_…"
 ```
 
@@ -44,7 +44,7 @@ Add `--scope user` to use it in every project. Check it with `claude mcp list`, 
 
 ## Claude Desktop
 
-Without a key: open **Settings → Connectors → Add custom connector**, name it `Songbrain` and paste `https://api.songbrain.ai/mcp`.
+Without a key: open **Settings → Connectors → Add custom connector**, name it `Songbrain` and paste `https://api.songbrain.ai/v1/mcp`.
 
 With a key: custom connectors can't send your own headers, so use the [`mcp-remote`](https://www.npmjs.com/package/mcp-remote) bridge (needs Node.js). Edit `claude_desktop_config.json` (**Settings → Developer → Edit Config**):
 
@@ -56,7 +56,7 @@ With a key: custom connectors can't send your own headers, so use the [`mcp-remo
       "args": [
         "-y",
         "mcp-remote",
-        "https://api.songbrain.ai/mcp",
+        "https://api.songbrain.ai/v1/mcp",
         "--header",
         "Authorization:${SONGBRAIN_AUTH}"
       ],
@@ -80,7 +80,7 @@ Without a key:
 {
   "mcpServers": {
     "songbrain": {
-      "url": "https://api.songbrain.ai/mcp"
+      "url": "https://api.songbrain.ai/v1/mcp"
     }
   }
 }
@@ -92,7 +92,7 @@ With a key:
 {
   "mcpServers": {
     "songbrain": {
-      "url": "https://api.songbrain.ai/mcp",
+      "url": "https://api.songbrain.ai/v1/mcp",
       "headers": {
         "Authorization": "Bearer sb_live_…"
       }
@@ -105,12 +105,12 @@ Don't commit a project file that contains your key.
 
 ## Any other client
 
-Point the client at `https://api.songbrain.ai/mcp` with the streamable HTTP transport. Send the key as a header if the client supports headers. If it only speaks stdio, use `npx -y mcp-remote https://api.songbrain.ai/mcp` as the command.
+Point the client at `https://api.songbrain.ai/v1/mcp` with the streamable HTTP transport. Send the key as a header if the client supports headers. If it only speaks stdio, use `npx -y mcp-remote https://api.songbrain.ai/v1/mcp` as the command.
 
 Test the server from a shell:
 
 ```bash
-curl -s https://api.songbrain.ai/mcp \
+curl -s https://api.songbrain.ai/v1/mcp \
   -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```

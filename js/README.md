@@ -160,7 +160,7 @@ await sb.webhookDeliveries({ limit: 20 });              // the last delivery att
 
 - API docs: https://www.songbrain.ai/docs/api
 - OpenAPI: https://api.songbrain.ai/v1/openapi.json
-- MCP server: https://api.songbrain.ai/mcp
+- MCP server: https://api.songbrain.ai/v1/mcp
 - Get a key: https://app.songbrain.ai/developers
 - Source: https://github.com/songbrain-ai/songbrain
 
