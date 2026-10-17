@@ -10,6 +10,8 @@
 
 Send a song. Get back JSON that a video model can use directly: what the song is, where the beats and sections are, which part to use, what the words are and when they are sung, what the video should show, and a shot list with a prompt for every scene that cuts on the beat.
 
+Under the hood that is beat detection with downbeats, song structure analysis (sections with repeat letters), best-moment detection and word-timed lyrics in one hosted API, plus an MCP server at `https://api.songbrain.ai/v1/mcp` so Claude, Cursor or ChatGPT can read a song directly ([setup guide](https://www.songbrain.ai/guides/mcp-server-music-analysis)).
+
 This repository holds the official SDKs for Python and JavaScript/TypeScript, examples, and the MCP server entry.
 
 - API docs: https://www.songbrain.ai/docs/api
