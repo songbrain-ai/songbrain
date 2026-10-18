@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.songbrain-ai/songbrain",
   "title": "Songbrain",
-  "description": "Song in, video plan out: beat grid, best moments, timed lyrics, story and a beat-synced shot plan.",
+  "description": "Tempo, key, beats, sections, best moments, lyrics, shot plan. Spotify Audio Features alternative.",
   "version": "1.0.0",
   "websiteUrl": "https://www.songbrain.ai/docs/api",
   "repository": {
