@@ -61,6 +61,25 @@ One scene from the shot plan:
 
 A song takes 60–90 seconds to analyse (up to about 2 minutes when busy).
 
+## Coming from Spotify Audio Features or Audio Analysis?
+
+Since November 27, 2024, new Spotify apps get a 403 on `/audio-features` and `/audio-analysis`. Songbrain returns the same kind of data from any audio file, released or not, and more:
+
+| Spotify | Songbrain | Note |
+|---|---|---|
+| `tempo` | `song_dna.tempo_bpm` | plus `tempo_confidence` |
+| `key` + `mode` | `song_dna.key` | `"C minor"`; `key_changes[]` with the second each one happens |
+| `energy` | `song_dna.energy` | 0–1, plus energy per section |
+| `loudness` | `song_dna.loudness_lufs` | EBU R128 integrated loudness and true peak |
+| `valence`, `danceability` | `song_dna.mood[]` | mood words rather than a number |
+| `instrumentalness`, `speechiness` | `has_vocals`, `song_dna.vocals` | vocal style or `"instrumental"` |
+| audio-analysis `beats` | `timeline.beats` | every beat in seconds |
+| audio-analysis `bars` | `timeline.downbeats` | first beat of each bar |
+| audio-analysis `sections` | `timeline.sections` | with repeat letters (A, B, A …) and relative energy |
+| — | `best_moments`, `lyrics`, `story`, `shot_plan` | not in Spotify: the strongest windows and why, word timings, a shot list |
+
+Migration guide with a ten-line example: https://www.songbrain.ai/guides/spotify-audio-features-alternative
+
 ## Install
 
 ```bash

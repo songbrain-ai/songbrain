@@ -4,6 +4,15 @@ All notable changes to the Songbrain SDKs in this repository. The format follows
 
 The Python package (`songbrain` on PyPI, tags `py-v*`) and the npm package (`songbrain` on npm, tags `js-v*`) are released together when they share a version. Changes to the API itself are in the [API changelog](https://www.songbrain.ai/docs/api/changelog).
 
+## [0.3.1] - 2026-10-18
+
+Metadata only. No code changes; 0.3.0 code keeps working.
+
+### Changed
+
+- Package keywords on PyPI and npm now name what the API measures (audio features, tempo, BPM and key detection, song sections, music information retrieval) and that it replaces Spotify's retired Audio Features / Audio Analysis endpoints for new apps.
+- READMEs: a "Coming from Spotify Audio Features?" section with the field-by-field mapping and a link to the migration guide.
+
 ## [0.3.0] - 2026-10-07
 
 For API 1.2. Backwards compatible with 0.2.x code.

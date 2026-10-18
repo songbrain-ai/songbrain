@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "songbrain"
-version = "0.3.0"
+version = "0.3.1"
 description = "Official Python client for the Songbrain API: song in, video plan out. Song DNA, beat grid, best moments, timed lyrics, story and a beat-synced shot plan."
 readme = "README.md"
 license = "MIT"
@@ -13,11 +13,20 @@ requires-python = ">=3.9"
 authors = [{ name = "Songbrain", email = "support@songbrain.ai" }]
 keywords = [
     "music analysis api",
-    "ai music video",
-    "shot plan",
+    "audio analysis api",
+    "audio features",
+    "spotify audio features alternative",
+    "spotify audio analysis alternative",
+    "tempo",
+    "bpm detection",
+    "key detection",
     "beat detection",
     "song structure",
+    "song sections",
+    "music information retrieval",
     "lyrics timestamps",
+    "ai music video",
+    "shot plan",
     "songbrain",
     "mcp",
 ]

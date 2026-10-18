@@ -152,6 +152,10 @@ await sb.testWebhook("https://example.com/songbrain"); // { delivered, status_co
 await sb.webhookDeliveries({ limit: 20 });              // the last delivery attempts
 ```
 
+## Coming from Spotify Audio Features?
+
+New Spotify apps have had no access to `/audio-features` and `/audio-analysis` since November 27, 2024. `song_dna` carries tempo (`tempo_bpm`), key, energy and loudness (LUFS), `timeline` carries every beat, downbeat and section, for any audio file. Field-by-field mapping and a migration example: https://www.songbrain.ai/guides/spotify-audio-features-alternative
+
 ## Pricing
 
 5 free songs per account per month. Then 25 credits per song (about $0.50). No subscription. Everything is included: analysis, story and shot plan. Results are yours, also in a paid or white-label product. See [Terms §17](https://www.songbrain.ai/terms#api).
