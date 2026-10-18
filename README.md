@@ -61,6 +61,17 @@ One scene from the shot plan:
 
 A song takes 60–90 seconds to analyse (up to about 2 minutes when busy).
 
+## Prompts for video models, starting from the best moment
+
+Most of a song is not worth animating. Songbrain ranks the strongest windows first (`best_moments`, each with the reason it works and the audio signals behind it) and builds the `shot_plan` on the top one: about 15 seconds, cut on the beat, one scene per cut. Every scene carries a ready prompt for an image or video model, written from the song's story, world and three-colour palette, so the scenes look like one film instead of unrelated clips.
+
+```json
+{"index": 8, "act": "turn", "start_sec": 102.965, "end_sec": 103.282, "motion": "impact: frame lands displaced and settles, fast energy",
+ "prompt": "tight detail shot: The truck's grille, showing rust, illuminated by the faint glow of the low headlight. Faded brown and warm yellow, in ..."}
+```
+
+Pass the prompts to Kling, Runway, Luma, Veo or a hosted model on fal or Replicate, and cut the clips at the given seconds. Recipes: [render-with-your-model.md](examples/render-with-your-model.md), [song_to_clips_fal.py](cookbook/song_to_clips_fal.py), [song_to_clips_replicate.py](cookbook/song_to_clips_replicate.py). The full-song plan (`shot_plan.full_song`) gives the cut points for a complete video.
+
 ## Coming from Spotify Audio Features or Audio Analysis?
 
 Since November 27, 2024, new Spotify apps get a 403 on `/audio-features` and `/audio-analysis`. Songbrain returns the same kind of data from any audio file, released or not, and more:

@@ -4,6 +4,15 @@ All notable changes to the Songbrain SDKs in this repository. The format follows
 
 The Python package (`songbrain` on PyPI, tags `py-v*`) and the npm package (`songbrain` on npm, tags `js-v*`) are released together when they share a version. Changes to the API itself are in the [API changelog](https://www.songbrain.ai/docs/api/changelog).
 
+## [0.3.2] - 2026-10-18
+
+Metadata only. No code changes.
+
+### Changed
+
+- Package keywords on PyPI and npm now also name the video side: AI video API, video generation prompts, text-to-video and image-to-video, music video prompts.
+- READMEs: a "Prompts for video models" section that explains how `best_moments` picks the window and `shot_plan` carries one ready prompt per scene, with links to the fal and Replicate recipes.
+
 ## [0.3.1] - 2026-10-18
 
 Metadata only. No code changes; 0.3.0 code keeps working.

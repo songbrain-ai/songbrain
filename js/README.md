@@ -152,6 +152,10 @@ await sb.testWebhook("https://example.com/songbrain"); // { delivered, status_co
 await sb.webhookDeliveries({ limit: 20 });              // the last delivery attempts
 ```
 
+## Prompts for video models
+
+`best_moments` ranks the strongest windows of the song with the reason each one works. `shot_plan.clip` turns the top moment into a beat-cut edit of about 15 seconds, and every scene carries a ready prompt for an image or video model (Kling, Runway, Luma, Veo, fal, Replicate), written from one story, world and palette so the scenes belong together. `shot_plan.full_song` gives the cut points for a complete video.
+
 ## Coming from Spotify Audio Features?
 
 New Spotify apps have had no access to `/audio-features` and `/audio-analysis` since November 27, 2024. `song_dna` carries tempo (`tempo_bpm`), key, energy and loudness (LUFS), `timeline` carries every beat, downbeat and section, for any audio file. Field-by-field mapping and a migration example: https://www.songbrain.ai/guides/spotify-audio-features-alternative
