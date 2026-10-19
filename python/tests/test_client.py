@@ -461,3 +461,45 @@ def test_webhook_deliveries():
     assert sb.webhook_deliveries(limit=5)["data"][0]["event_id"] == "evt_1"
     method, url, kw = sess.calls[0]
     assert method == "GET" and url.endswith("/webhooks/deliveries") and kw["params"] == {"limit": 5}
+
+
+_AGENT_VARS = ("AI_AGENT", "CLAUDECODE", "CURSOR_AGENT", "GEMINI_CLI", "CODEX_SANDBOX", "OPENCODE",
+               "AUGMENT_AGENT", "SONGBRAIN_NO_AGENT_HINT")
+
+
+def _clean_agent_env(monkeypatch):
+    for k in _AGENT_VARS:
+        monkeypatch.delenv(k, raising=False)
+
+
+def test_user_agent_plain_outside_agents(monkeypatch):
+    _clean_agent_env(monkeypatch)
+    sb, sess = _client([_resp(body={"object": "list", "data": []})])
+    sb.examples()
+    assert sess.calls[0][2]["headers"]["User-Agent"] == f"songbrain-python/{songbrain.__version__}"
+
+
+@pytest.mark.parametrize(
+    "env,hint",
+    [({"CLAUDECODE": "1"}, "claude-code"),
+     ({"AI_AGENT": "claude-code_2-1-299_agent"}, "claude-code"),
+     ({"AI_AGENT": "Weird Name!_x"}, "weirdname"),
+     ({"CURSOR_AGENT": "1"}, "cursor"),
+     ({"AI_AGENT": "opencode", "CLAUDECODE": "1"}, "opencode")],
+)
+def test_user_agent_names_the_coding_agent(monkeypatch, env, hint):
+    _clean_agent_env(monkeypatch)
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    sb, sess = _client([_resp(body={"object": "list", "data": []})])
+    sb.examples()
+    assert sess.calls[0][2]["headers"]["User-Agent"] == f"songbrain-python/{songbrain.__version__} (agent: {hint})"
+
+
+def test_agent_hint_opt_out(monkeypatch):
+    _clean_agent_env(monkeypatch)
+    monkeypatch.setenv("CLAUDECODE", "1")
+    monkeypatch.setenv("SONGBRAIN_NO_AGENT_HINT", "1")
+    sb, sess = _client([_resp(body={"object": "list", "data": []})])
+    sb.examples()
+    assert "agent" not in sess.calls[0][2]["headers"]["User-Agent"]

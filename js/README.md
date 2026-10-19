@@ -107,6 +107,10 @@ console.log(sb.lastRateLimit); // { limit: 120, remaining: 119, reset: 0 }
 console.log(sb.lastRequestId); // "req_…"
 ```
 
+## User-Agent and coding agents
+
+The SDK sends `User-Agent: songbrain-js/<version>`. When it runs inside a coding agent's shell (Claude Code, Cursor, Gemini CLI, Codex, opencode, Augment), it appends the agent's name, for example `songbrain-js/0.3.3 (agent: claude-code)`. The name comes from environment variables those tools set themselves (`AI_AGENT`, `CLAUDECODE`, `CURSOR_AGENT` …). Nothing else from your environment is sent. It tells us which agents developers build with. Set `SONGBRAIN_NO_AGENT_HINT=1` to turn it off.
+
 ## Errors
 
 API errors throw `SongbrainError` with `status`, `code`, `message` and `requestId` (`req_…`; the message ends with `(request_id: req_…)`, quote it when you write to support). Subclasses: `AuthenticationError` (401), `InsufficientCredits` (402), `NotFound` (404), `RateLimited` (429, with `retryAfter` in seconds), `AnalysisFailed` (the song failed; credits are refunded) and `WaitTimeout` (the song keeps processing).

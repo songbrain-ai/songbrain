@@ -24,6 +24,7 @@ from urllib.parse import quote
 
 import requests
 
+from ._agent import user_agent
 from ._version import __version__
 from .errors import (
     AnalysisFailed,
@@ -455,7 +456,7 @@ class Songbrain:
         return fh, name, close_after
 
     def _headers(self) -> Dict[str, str]:
-        headers = {"Accept": "application/json", "User-Agent": f"songbrain-python/{__version__}"}
+        headers = {"Accept": "application/json", "User-Agent": user_agent(__version__)}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
         return headers

@@ -231,6 +231,10 @@ Every response has a `Songbrain-Request-Id: req_…` header, and every error bod
 
 Requests with a key return `X-RateLimit-Limit` (requests per minute, currently 120), `X-RateLimit-Remaining` and `X-RateLimit-Reset` (seconds until the window has room again). The SDKs keep the last values in `sb.last_rate_limit` / `sb.lastRateLimit`.
 
+## User-Agent and coding agents
+
+The SDKs send `songbrain-python/<version>` or `songbrain-js/<version>` as User-Agent. Since 0.3.3, inside a coding agent's shell (Claude Code, Cursor, Gemini CLI, Codex, opencode, Augment) they append the agent's name, for example `songbrain-js/0.3.3 (agent: claude-code)`. The name comes from environment variables those tools set themselves (`AI_AGENT`, `CLAUDECODE`, `CURSOR_AGENT` …); nothing else from your environment is sent. Browsers never send it. Set `SONGBRAIN_NO_AGENT_HINT=1` to turn it off.
+
 ## Webhooks
 
 Pass `webhook_url` when you create a song. Songbrain POSTs `song.done` or `song.failed`, and `account.low_balance` when you run low:

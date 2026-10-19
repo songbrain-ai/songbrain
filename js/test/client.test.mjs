@@ -406,3 +406,36 @@ test("testWebhook and webhookDeliveries", async () => {
   assert.ok(u.pathname.endsWith("/webhooks/deliveries"));
   assert.equal(u.searchParams.get("limit"), "5");
 });
+
+const AGENT_VARS = ["AI_AGENT", "CLAUDECODE", "CURSOR_AGENT", "GEMINI_CLI", "CODEX_SANDBOX", "OPENCODE", "AUGMENT_AGENT", "SONGBRAIN_NO_AGENT_HINT"];
+
+async function uaWith(env) {
+  const saved = Object.fromEntries(AGENT_VARS.map((k) => [k, process.env[k]]));
+  for (const k of AGENT_VARS) delete process.env[k];
+  Object.assign(process.env, env);
+  try {
+    const { sb, calls } = client([json(200, { object: "list", data: [] })]);
+    await sb.examples();
+    return calls[0].headers["User-Agent"];
+  } finally {
+    for (const k of AGENT_VARS) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+  }
+}
+
+test("user agent is plain outside coding agents", async () => {
+  assert.equal(await uaWith({}), `songbrain-js/${VERSION}`);
+});
+
+test("user agent names the coding agent", async () => {
+  assert.equal(await uaWith({ CLAUDECODE: "1" }), `songbrain-js/${VERSION} (agent: claude-code)`);
+  assert.equal(await uaWith({ AI_AGENT: "claude-code_2-1-299_agent" }), `songbrain-js/${VERSION} (agent: claude-code)`);
+  assert.equal(await uaWith({ AI_AGENT: "Weird Name!_x" }), `songbrain-js/${VERSION} (agent: weirdname)`);
+  assert.equal(await uaWith({ CURSOR_AGENT: "1" }), `songbrain-js/${VERSION} (agent: cursor)`);
+});
+
+test("agent hint can be turned off", async () => {
+  assert.equal(await uaWith({ CLAUDECODE: "1", SONGBRAIN_NO_AGENT_HINT: "1" }), `songbrain-js/${VERSION}`);
+});

@@ -107,6 +107,10 @@ print(sb.last_rate_limit)   # {"limit": 120, "remaining": 119, "reset": 0}
 print(sb.last_request_id)   # "req_…"
 ```
 
+## User-Agent and coding agents
+
+The SDK sends `User-Agent: songbrain-python/<version>`. When it runs inside a coding agent's shell (Claude Code, Cursor, Gemini CLI, Codex, opencode, Augment), it appends the agent's name, for example `songbrain-python/0.3.3 (agent: claude-code)`. The name comes from environment variables those tools set themselves (`AI_AGENT`, `CLAUDECODE`, `CURSOR_AGENT` …). Nothing else from your environment is sent. It tells us which agents developers build with. Set `SONGBRAIN_NO_AGENT_HINT=1` to turn it off.
+
 ## Errors
 
 API errors raise `SongbrainError` with `.status`, `.code`, `.message` and `.request_id` (`req_…`, also in `str(error)`; quote it when you write to support). Subclasses:

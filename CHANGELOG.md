@@ -4,6 +4,12 @@ All notable changes to the Songbrain SDKs in this repository. The format follows
 
 The Python package (`songbrain` on PyPI, tags `py-v*`) and the npm package (`songbrain` on npm, tags `js-v*`) are released together when they share a version. Changes to the API itself are in the [API changelog](https://www.songbrain.ai/docs/api/changelog).
 
+## [0.3.3] - 2026-10-19
+
+### Added
+
+- User-Agent names the coding agent when the SDK runs inside one: `songbrain-python/0.3.3 (agent: claude-code)`. Read from the agents' own environment variables (`AI_AGENT`, `CLAUDECODE`, `CURSOR_AGENT`, `GEMINI_CLI`, `CODEX_SANDBOX`, `OPENCODE`, `AUGMENT_AGENT`); only the name is sent. Turn it off with `SONGBRAIN_NO_AGENT_HINT=1`.
+
 ## [0.3.2] - 2026-10-18
 
 Metadata only. No code changes.

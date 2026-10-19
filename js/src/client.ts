@@ -22,7 +22,7 @@ import type {
   WebhookDeliveryList,
   WebhookTestResult,
 } from "./types.js";
-import { VERSION } from "./version.js";
+import { userAgent } from "./agent.js";
 
 export const DEFAULT_BASE_URL = "https://api.songbrain.ai/v1";
 const REQUEST_ID_HEADER = "Songbrain-Request-Id";
@@ -420,7 +420,7 @@ export class Songbrain {
     for (let attempt = 0; ; attempt++) {
       const headers: Record<string, string> = {
         Accept: "application/json",
-        "User-Agent": `songbrain-js/${VERSION}`,
+        "User-Agent": userAgent(),
       };
       if (this.apiKey) headers.Authorization = `Bearer ${this.apiKey}`;
       Object.assign(headers, opts.headers);
