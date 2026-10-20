@@ -291,6 +291,100 @@ test("lyrics are sent with a URL and with an upload", async () => {
   assert.deepEqual(calls[1].upload.fields, { lyrics });
 });
 
+// ── modes and video direction ───────────────────────────────────────────────
+
+test("mode is sent with a URL and with an upload; nothing by default", async () => {
+  const ok = () => json(202, { id: "s", status: "processing", mode: "dna" });
+  const { sb, calls } = client([ok(), ok(), ok(), ok()]);
+  const out = await sb.analyze({ audioUrl: "https://x/a.mp3", mode: "dna", wait: false });
+  assert.equal(out.mode, "dna");
+  assert.deepEqual(JSON.parse(calls[0].body), { audio_url: "https://x/a.mp3", mode: "dna" });
+  await sb.analyze({ file: Buffer.concat([Buffer.from("ID3"), Buffer.alloc(32)]), mode: "dna", wait: false });
+  assert.deepEqual(calls[1].upload.fields, { mode: "dna" });
+  await sb.analyze({ audioUrl: "https://x/a.mp3", wait: false });
+  assert.equal(JSON.parse(calls[2].body).mode, undefined);
+  await sb.analyze({ test: true, mode: "full", wait: false });
+  assert.deepEqual(JSON.parse(calls[3].body), { mode: "full", test: true });
+});
+
+test("addDirection POSTs to /songs/{id}/direction and polls until done", async () => {
+  const accepted = {
+    object: "song", id: "s1", status: "processing", mode: "full", eta_sec: 30,
+    billing: { type: "credits", credits: 15 }, url: "https://api.songbrain.ai/v1/songs/s1",
+  };
+  const { sb, calls, sleeps } = client([
+    json(202, accepted),
+    json(200, { id: "s1", status: "processing", progress: 0.97, mode: "full" }),
+    json(200, { id: "s1", status: "done", mode: "full", story: { world: "w" }, shot_plan: { status: "ready" } }),
+  ]);
+  const doc = await sb.addDirection("s1", { pollIntervalMs: 500 });
+  assert.equal(doc.mode, "full");
+  assert.equal(doc.shot_plan.status, "ready");
+  assert.equal(calls[0].method, "POST");
+  assert.equal(calls[0].url, "https://api.songbrain.ai/v1/songs/s1/direction");
+  assert.equal(calls[0].body, undefined);
+  assert.equal(calls[0].headers["Idempotency-Key"], undefined);
+  assert.deepEqual(calls.slice(1).map((c) => [c.method, c.url]), [
+    ["GET", "https://api.songbrain.ai/v1/songs/s1"],
+    ["GET", "https://api.songbrain.ai/v1/songs/s1"],
+  ]);
+  assert.deepEqual(sleeps, [500]);
+});
+
+test("addDirection with wait: false resolves to the 202 body; ids are encoded", async () => {
+  const accepted = { id: "test_1", status: "done", mode: "full", eta_sec: 0, billing: { type: "test", credits: 0 } };
+  const { sb, calls } = client([json(202, accepted), json(202, { id: "a/b" })]);
+  assert.deepEqual(await sb.addDirection("test_1", { wait: false }), accepted);
+  assert.equal(calls.length, 1);
+  await sb.addDirection("a/b", { wait: false });
+  assert.ok(calls[1].url.endsWith("/songs/a%2Fb/direction"));
+});
+
+test("addDirection throws AnalysisFailed when the song falls back to dna", async () => {
+  const { sb } = client([
+    json(202, { id: "s1", status: "processing", mode: "full" }),
+    json(200, { id: "s1", status: "done", mode: "dna", direction: { included: false } }),
+  ]);
+  await assert.rejects(sb.addDirection("s1"), (e) => {
+    assert.ok(e instanceof AnalysisFailed);
+    assert.equal(e.code, "direction_failed");
+    assert.equal(e.songId, "s1");
+    assert.equal(e.body.mode, "dna");
+    return true;
+  });
+});
+
+for (const [status, code, cls] of [
+  [409, "direction_included", SongbrainError],
+  [409, "not_done", SongbrainError],
+  [409, "song_failed", SongbrainError],
+  [409, "direction_in_progress", SongbrainError],
+  [402, "insufficient_credits", InsufficientCredits],
+  [404, "not_found", NotFound],
+]) {
+  test(`addDirection ${status} ${code} is thrown without a retry`, async () => {
+    const { sb, calls } = client([json(status, { error: { code, message: "x" } })]);
+    await assert.rejects(sb.addDirection("s1"), (e) => e instanceof cls && e.status === status && e.code === code);
+    assert.equal(calls.length, 1);
+  });
+}
+
+test("shotPlan of a dna song is a 409 no_direction with the offer in the body", async () => {
+  const body = { error: { code: "no_direction", message: "x" }, direction: { included: false, credits: 15 } };
+  const { sb } = client([json(409, body)]);
+  await assert.rejects(sb.shotPlan("s1"), (e) => e.code === "no_direction" && e.body.direction.credits === 15);
+});
+
+test("example with mode: dna", async () => {
+  const { sb, calls } = client([json(200, { id: "sugar-rush", mode: "dna" }), json(200, { id: "sugar-rush" })]);
+  assert.equal((await sb.example("sugar-rush", { mode: "dna" })).mode, "dna");
+  const u = new URL(calls[0].url);
+  assert.ok(u.pathname.endsWith("/examples/sugar-rush"));
+  assert.equal(u.searchParams.get("mode"), "dna");
+  await sb.example("sugar-rush");
+  assert.equal(new URL(calls[1].url).search, "");
+});
+
 // ── request ids and rate limits ─────────────────────────────────────────────
 
 test("errors carry the request id from the body, else from the header", async () => {

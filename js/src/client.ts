@@ -10,7 +10,9 @@ import {
 import type {
   Account,
   DeleteResult,
+  DirectionCreated,
   ExampleList,
+  Mode,
   Pricing,
   RateLimitInfo,
   SectionName,
@@ -68,6 +70,13 @@ export interface AnalyzeOptions {
    */
   lyrics?: string;
   /**
+   * "full" (the API default, 25 credits) = Song DNA + video direction (story, shot plan).
+   * "dna" (10 credits) = Song DNA only: song_dna, timeline, best_moments, lyrics and
+   * scores, no story and no shot plan. Add the direction later with `addDirection`
+   * (15 credits). Left out, nothing is sent and the API uses "full". A free song covers either mode.
+   */
+  mode?: Mode;
+  /**
    * Test mode: free, never charged, no audio needed. The song is done right away and
    * returns the Sugar Rush example analysis with `livemode: false`. `song.done` is
    * still sent to `webhookUrl`. Made for CI and integration tests.
@@ -111,6 +120,16 @@ export interface GetSongOptions {
   view?: "full" | "summary";
   /** Only these sections, e.g. ["song_dna", "shot_plan"]. */
   include?: SectionName[] | string;
+}
+
+export interface ExampleOptions extends GetSongOptions {
+  /** "dna" returns what a Song DNA-only song looks like: no story, no shot plan, a `direction` offer. */
+  mode?: Mode;
+}
+
+export interface AddDirectionOptions extends WaitOptions {
+  /** Wait until the direction is there and return the full document (default true). */
+  wait?: boolean;
 }
 
 type Json = Record<string, unknown>;
@@ -260,6 +279,7 @@ export class Songbrain {
     if (options.webhookUrl !== undefined) fields.webhook_url = options.webhookUrl;
     if (options.externalRef !== undefined) fields.external_ref = options.externalRef;
     if (options.lyrics !== undefined) fields.lyrics = options.lyrics;
+    if (options.mode !== undefined) fields.mode = options.mode;
     const headers = { [IDEMPOTENCY_HEADER]: options.idempotencyKey || (await newIdempotencyKey()) };
 
     let created: SongCreated;
@@ -288,12 +308,46 @@ export class Songbrain {
   }
 
   /** Poll GET /songs/{id} until the song is done. Throws `AnalysisFailed` or `WaitTimeout`. */
-  async waitFor(songId: string, options: WaitOptions = {}): Promise<Song> {
+  waitFor(songId: string, options: WaitOptions = {}): Promise<Song> {
+    return this.poll(songId, options, false);
+  }
+
+  /**
+   * Add the video direction (story + shot plan) to a finished `mode: "dna"` song:
+   * `POST /songs/{id}/direction`. 15 credits (never a free song), refunded automatically
+   * if it fails. No new upload. Takes about 30-40 s; the song is "processing" meanwhile,
+   * then "done" again with `mode: "full"`. Test-mode songs (`test_…`) upgrade right away, for free.
+   *
+   * With `wait: true` (default) resolves to the full document; with `wait: false` to the
+   * 202 body `{ id, status: "processing", mode: "full", eta_sec, billing }`.
+   * Throws `AnalysisFailed` (code "direction_failed", credits refunded, the song stays "dna"),
+   * `InsufficientCredits` (402), or `SongbrainError` 409 `direction_included`, `not_done`,
+   * `song_failed`, `direction_in_progress`.
+   */
+  addDirection(songId: string, options: AddDirectionOptions & { wait: false }): Promise<DirectionCreated>;
+  addDirection(songId: string, options?: AddDirectionOptions & { wait?: true }): Promise<Song>;
+  addDirection(songId: string, options?: AddDirectionOptions): Promise<Song | DirectionCreated>;
+  async addDirection(songId: string, options: AddDirectionOptions = {}): Promise<Song | DirectionCreated> {
+    const created = await this.request<DirectionCreated>("POST", `/songs/${encodeURIComponent(songId)}/direction`);
+    if (options.wait === false) return created;
+    return this.poll(songId, options, true);
+  }
+
+  private async poll(songId: string, options: WaitOptions, direction: boolean): Promise<Song> {
     const timeoutMs = options.timeoutMs ?? 300_000;
     const interval = Math.max(500, options.pollIntervalMs ?? 5_000);
     const deadline = Date.now() + timeoutMs;
     for (;;) {
       const doc = await this.getSong(songId);
+      if (doc.status === "done" && direction && doc.mode === "dna") {
+        // The upgrade failed: the API refunded the credits and set the song back to "dna".
+        throw new AnalysisFailed(
+          songId,
+          "direction_failed",
+          "The video direction could not be added. The 15 credits were refunded automatically; the Song DNA is unchanged.",
+          doc,
+        );
+      }
       if (doc.status === "done") return doc;
       if (doc.status === "failed") {
         throw new AnalysisFailed(
@@ -314,7 +368,10 @@ export class Songbrain {
     return this.request<Song>("GET", `/songs/${encodeURIComponent(songId)}`, { query: docQuery(options) });
   }
 
-  /** Only the story and the shot plan: `{ id, status, song, story, shot_plan }`. */
+  /**
+   * Only the story and the shot plan: `{ id, status, song, story, shot_plan }`.
+   * A "dna" song has none: 409 `no_direction` (the error body's `direction` says how to add it).
+   */
   shotPlan(songId: string): Promise<SongShotPlan> {
     return this.request<SongShotPlan>("GET", `/songs/${encodeURIComponent(songId)}/shot-plan`);
   }
@@ -351,7 +408,7 @@ export class Songbrain {
 
   // ── account ──────────────────────────────────────────────────────────────
 
-  /** Free songs left this month, credit balance and price per song. */
+  /** Free songs left this month, credit balance and prices (`prices`: full, dna, add_direction). */
   account(): Promise<Account> {
     return this.request<Account>("GET", "/account");
   }
@@ -385,9 +442,14 @@ export class Songbrain {
     return this.request<ExampleList>("GET", "/examples");
   }
 
-  /** A full example document, in the same format as `getSong`. No key needed. */
-  example(exampleId: string, options: GetSongOptions = {}): Promise<Song> {
-    return this.request<Song>("GET", `/examples/${encodeURIComponent(exampleId)}`, { query: docQuery(options) });
+  /**
+   * A full example document, in the same format as `getSong`. No key needed.
+   * `mode: "dna"` returns the Song DNA view (no story, no shot plan).
+   */
+  example(exampleId: string, options: ExampleOptions = {}): Promise<Song> {
+    return this.request<Song>("GET", `/examples/${encodeURIComponent(exampleId)}`, {
+      query: { ...docQuery(options), mode: options.mode },
+    });
   }
 
   /** An example story and shot plan, in the same format as `shotPlan`. No key needed. */

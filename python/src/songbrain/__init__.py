@@ -11,7 +11,7 @@ The official Python client for the Songbrain API (https://www.songbrain.ai/docs/
 """
 
 from . import types, webhooks
-from ._client import DEFAULT_BASE_URL, SECTIONS, FileInput, Include, Songbrain
+from ._client import DEFAULT_BASE_URL, SECTIONS, FileInput, Include, Mode, Songbrain
 from ._version import __version__
 from .errors import (
     AnalysisFailed,
@@ -29,6 +29,7 @@ __all__ = [
     "SECTIONS",
     "FileInput",
     "Include",
+    "Mode",
     "SongbrainError",
     "AuthenticationError",
     "InsufficientCredits",

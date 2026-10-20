@@ -7,9 +7,10 @@ All times are seconds from the start of the song unless the name says otherwise
 (``start_in_clip``).
 """
 
-from typing import Any, Dict, List, Optional, TypedDict, Union
+from typing import Any, Dict, List, Literal, Optional, TypedDict, Union
 
 __all__ = [
+    "Mode",
     "Billing",
     "LyricsAlignment",
     "Provenance",
@@ -42,14 +43,21 @@ __all__ = [
     "FullSong",
     "ShotPlan",
     "ErrorInfo",
+    "DirectionOffer",
     "Song",
     "SongCreated",
+    "DirectionCreated",
     "SongShotPlan",
     "SongListItem",
     "SongList",
     "DeleteResult",
     "ExampleSummary",
     "ExampleList",
+    "Price",
+    "AccountPrices",
+    "ModePrice",
+    "PricingModes",
+    "AddDirectionPrice",
     "Account",
     "Pricing",
     "RateLimitInfo",
@@ -58,6 +66,10 @@ __all__ = [
     "WebhookDelivery",
     "WebhookDeliveryList",
 ]
+
+#: What a song includes. ``"full"`` (the default): Song DNA + video direction (story, shot plan).
+#: ``"dna"``: Song DNA only (song_dna, timeline, best_moments, lyrics, scores).
+Mode = Literal["full", "dna"]
 
 
 class Billing(TypedDict, total=False):
@@ -340,8 +352,21 @@ class ErrorInfo(TypedDict, total=False):
     request_id: str  # "req_…", also in the Songbrain-Request-Id header
 
 
+class DirectionOffer(TypedDict, total=False):
+    """On a ``"dna"`` song: how to add the video direction (story + shot plan) later."""
+
+    included: bool  # always False here
+    add: str  # "POST https://api.songbrain.ai/v1/songs/{id}/direction"
+    credits: int  # 15
+    usd: float  # 0.3
+    adds: List[str]  # ["story", "shot_plan"]
+
+
 class Song(TypedDict, total=False):
-    """The song document. While processing only id, status, progress and eta_sec are set."""
+    """The song document. While processing only id, status, progress, eta_sec and mode are set.
+
+    A ``"dna"`` song has no ``story`` and no ``shot_plan``; it has ``direction`` instead.
+    """
 
     object: str  # "song"
     schema: str  # "songbrain.song/1"
@@ -363,6 +388,8 @@ class Song(TypedDict, total=False):
     billing: Billing
     livemode: bool  # False for test-mode songs
     provenance: Provenance  # measured vs. transcribed vs. model estimate vs. generated
+    mode: str  # "full" or "dna" (API 1.3)
+    direction: DirectionOffer  # only on "dna" songs
 
 
 class SongCreated(TypedDict, total=False):
@@ -371,9 +398,23 @@ class SongCreated(TypedDict, total=False):
     object: str
     id: str
     status: str  # "processing"
+    mode: str  # "full" or "dna"
     eta_sec: int
     billing: Billing
     external_ref: Optional[str]
+    url: str
+    livemode: bool
+
+
+class DirectionCreated(TypedDict, total=False):
+    """The 202 body of POST /songs/{id}/direction."""
+
+    object: str  # "song"
+    id: str
+    status: str  # "processing"; "done" right away for a test-mode song
+    mode: str  # "full"
+    eta_sec: int
+    billing: Billing
     url: str
     livemode: bool
 
@@ -389,6 +430,7 @@ class SongShotPlan(TypedDict, total=False):
 class SongListItem(TypedDict, total=False):
     id: str
     status: str
+    mode: str  # "full" or "dna"
     external_ref: Optional[str]
     created_at: Optional[str]
     billing: Billing
@@ -428,13 +470,45 @@ class ExampleList(TypedDict, total=False):
     data: List[ExampleSummary]
 
 
+class Price(TypedDict, total=False):
+    credits: int
+    usd: float
+
+
+class AccountPrices(TypedDict, total=False):
+    full: Price  # Song DNA + video direction (25 credits)
+    dna: Price  # Song DNA only (10 credits)
+    add_direction: Price  # story + shot plan for a finished dna song (15 credits)
+
+
+class ModePrice(TypedDict, total=False):
+    name: str
+    credits: int
+    usd: float
+    includes: List[str]  # section names
+    default: bool
+
+
+class PricingModes(TypedDict, total=False):
+    full: ModePrice
+    dna: ModePrice
+
+
+class AddDirectionPrice(TypedDict, total=False):
+    endpoint: str  # "POST /v1/songs/{id}/direction"
+    credits: int
+    usd: float
+    note: str
+
+
 class Account(TypedDict, total=False):
     credits: int
     free_songs_per_month: int
     free_songs_used: int
     free_songs_left: int
-    price_per_song_credits: int
-    price_per_song_usd: float
+    price_per_song_credits: int  # mode "full"
+    price_per_song_usd: float  # mode "full"
+    prices: AccountPrices  # price per mode (API 1.3)
     songs_this_month: int
     buy_credits_url: str
     songs_left_from_credits: int
@@ -445,8 +519,11 @@ class Account(TypedDict, total=False):
 
 class Pricing(TypedDict, total=False):
     free_songs_per_month: int
-    price_per_song_credits: int
-    price_per_song_usd: float
+    free_songs_cover: str  # "either mode"
+    price_per_song_credits: int  # mode "full"
+    price_per_song_usd: float  # mode "full"
+    modes: PricingModes  # API 1.3
+    add_direction: AddDirectionPrice  # API 1.3
     credit_packs: List[Dict[str, Any]]
     included_per_song: List[str]
     volume: str
@@ -469,6 +546,8 @@ class WebhookEvent(TypedDict, total=False):
     type: str  # "song.done", "song.failed", "account.low_balance" or "ping"
     created: int  # Unix seconds
     livemode: bool
+    # song.*: id, status, mode, external_ref, url; shot_plan_url only for "full" songs.
+    # After add_direction a second song.done arrives with its own id and data["direction_added"] = True.
     data: Dict[str, Any]
 
 

@@ -101,6 +101,12 @@
                   "value": "song_dna,shot_plan",
                   "disabled": true,
                   "description": "only these sections"
+                },
+                {
+                  "key": "mode",
+                  "value": "dna",
+                  "disabled": true,
+                  "description": "dna = the Song DNA view (no story, no shot plan)"
                 }
               ]
             },
@@ -210,10 +216,10 @@
                 "songs"
               ]
             },
-            "description": "Analyse a public audio URL. 202 with `{id, status: \"processing\", eta_sec, billing}`. Takes 60-90 s.",
+            "description": "Analyse a public audio URL. 202 with `{id, status: \"processing\", mode, eta_sec, billing}`. Takes 60-90 s. `mode`: \"full\" (default, 25 credits) = Song DNA + video direction; \"dna\" (10 credits) = Song DNA only, no story and no shot plan.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"audio_url\": \"https://example.com/song.mp3\",\n  \"title\": \"My Song\",\n  \"artist\": \"Me\",\n  \"external_ref\": \"my-id-123\",\n  \"webhook_url\": \"{{webhookUrl}}\"\n}",
+              "raw": "{\n  \"audio_url\": \"https://example.com/song.mp3\",\n  \"mode\": \"full\",\n  \"title\": \"My Song\",\n  \"artist\": \"Me\",\n  \"external_ref\": \"my-id-123\",\n  \"webhook_url\": \"{{webhookUrl}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -286,6 +292,13 @@
                   "value": "true",
                   "type": "text",
                   "disabled": true
+                },
+                {
+                  "key": "mode",
+                  "value": "dna",
+                  "type": "text",
+                  "disabled": true,
+                  "description": "full (default) or dna (Song DNA only, 10 credits)"
                 }
               ]
             }
@@ -352,8 +365,38 @@
                 "shot-plan"
               ]
             },
-            "description": "Only the story and the shot plan."
+            "description": "Only the story and the shot plan. A `dna` song answers 409 `no_direction`; add it with **Add video direction**."
           }
+        },
+        {
+          "name": "Add video direction",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/songs/{{songId}}/direction",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "songs",
+                "{{songId}}",
+                "direction"
+              ]
+            },
+            "description": "For a finished song made with `mode: \"dna\"`: adds the story and the beat-synced shot plan from the existing analysis. 15 credits, refunded if it fails. 202 `{id, status: \"processing\", mode: \"full\", eta_sec, billing}`; poll **Get song** (about 30-40 s). 409 `direction_included`, `not_done`, `song_failed` or `direction_in_progress`; 402 below 15 credits. Test-mode songs upgrade right away, free."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202 Accepted', () => pm.response.to.have.status(202));"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "List songs",

@@ -45,6 +45,8 @@ def songbrain_webhook():
 
     if event["type"] == "ping":
         print(f"ping {event['id']}")
+    elif event["type"] == "song.done" and data.get("mode") == "dna":
+        print(f"song.done {data['id']} (ref {data.get('external_ref')}): Song DNA only, no shot plan")
     elif event["type"] == "song.done":
         plan = sb.shot_plan(data["id"])
         scenes = plan["shot_plan"]["clip"]["scenes"]

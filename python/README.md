@@ -28,6 +28,27 @@ for scene in song["shot_plan"]["clip"]["scenes"]:
 
 `analyze()` uploads the song, waits until the analysis is done (typically 60–90 s) and returns the full document.
 
+## Two modes
+
+Every song is analysed in one of two modes. Use `dna` when you only need the data, or to sort many songs first. Then add the video direction to the ones you pick. `dna` plus the direction costs the same as `full`.
+
+| Mode | What you get | Price |
+|---|---|---|
+| `dna` | Song DNA: `song_dna`, `timeline`, `best_moments`, `lyrics`, `scores`. No story, no shot plan | 10 credits, about $0.20 |
+| `full` (default) | Song DNA + video direction: `story` and a beat-synced `shot_plan` with a prompt per scene | 25 credits, about $0.50 |
+| Add direction later | `story` + `shot_plan` for a finished `dna` song. No new upload | 15 credits, about $0.30 |
+
+```python
+song = sb.analyze("song.mp3", mode="dna")       # 10 credits: no story, no shot plan
+if song["scores"]["virality"]["score"] >= 80:
+    song = sb.add_direction(song["id"])         # +15 credits, waits about 30-40 s
+    print(song["shot_plan"]["clip"]["scenes"][0]["prompt"])
+```
+
+The 5 free songs a month cover either mode. Adding the direction never uses a free song. If it fails, the 15 credits are refunded and the song stays `dna`. `GET /v1/songs/{id}/shot-plan` on a `dna` song answers 409 `no_direction`.
+
+`add_direction(id, wait=False)` returns the 202 body right away. `sb.example("sugar-rush", mode="dna")` shows a `dna` document without a key.
+
 ## Try it without a key
 
 The example endpoints return real analyses of Songbrain's own songs, in exactly the format your songs get.
@@ -47,7 +68,8 @@ Every method returns the JSON body of the response as a `dict`. Types for editor
 
 | Method | API call | Key |
 |---|---|---|
-| `analyze(file=None, *, audio_url=None, title=None, artist=None, webhook_url=None, external_ref=None, filename=None, test=False, idempotency_key=None, wait=True, poll_interval=5, timeout=300)` | `POST /songs`, then polls `GET /songs/{id}` | yes |
+| `analyze(file=None, *, audio_url=None, title=None, artist=None, webhook_url=None, external_ref=None, filename=None, lyrics=None, mode=None, test=False, idempotency_key=None, wait=True, poll_interval=5, timeout=300)` | `POST /songs`, then polls `GET /songs/{id}` | yes |
+| `add_direction(song_id, *, wait=True, poll_interval=5, timeout=300)` | `POST /songs/{id}/direction`, then polls `GET /songs/{id}` | yes |
 | `wait_for(song_id, *, poll_interval=5, timeout=300)` | polls `GET /songs/{id}` | yes |
 | `get_song(id, view=None, include=None)` | `GET /songs/{id}` | yes |
 | `shot_plan(id)` | `GET /songs/{id}/shot-plan` | yes |
@@ -59,7 +81,7 @@ Every method returns the JSON body of the response as a `dict`. Types for editor
 | `webhook_deliveries(limit=20)` | `GET /webhooks/deliveries` | yes |
 | `pricing()` | `GET /pricing` | no |
 | `examples()` | `GET /examples` | no |
-| `example(id, view=None, include=None)` | `GET /examples/{id}` | no |
+| `example(id, view=None, include=None, mode=None)` | `GET /examples/{id}` | no |
 | `example_shot_plan(id)` | `GET /examples/{id}/shot-plan` | no |
 
 - `file` can be a path, `bytes` or an open binary file. MP3, WAV, FLAC, M4A, AAC, OGG or AIFF, up to 100 MB, 30 s to 10 min. The file name's extension has to match the audio; for bytes without a name the client detects the format or you pass `filename="song.mp3"`.
@@ -109,7 +131,7 @@ print(sb.last_request_id)   # "req_…"
 
 ## User-Agent and coding agents
 
-The SDK sends `User-Agent: songbrain-python/<version>`. When it runs inside a coding agent's shell (Claude Code, Cursor, Gemini CLI, Codex, opencode, Augment), it appends the agent's name, for example `songbrain-python/0.3.3 (agent: claude-code)`. The name comes from environment variables those tools set themselves (`AI_AGENT`, `CLAUDECODE`, `CURSOR_AGENT` …). Nothing else from your environment is sent. It tells us which agents developers build with. Set `SONGBRAIN_NO_AGENT_HINT=1` to turn it off.
+The SDK sends `User-Agent: songbrain-python/<version>`. When it runs inside a coding agent's shell (Claude Code, Cursor, Gemini CLI, Codex, opencode, Augment), it appends the agent's name, for example `songbrain-python/0.4.0 (agent: claude-code)`. The name comes from environment variables those tools set themselves (`AI_AGENT`, `CLAUDECODE`, `CURSOR_AGENT` …). Nothing else from your environment is sent. It tells us which agents developers build with. Set `SONGBRAIN_NO_AGENT_HINT=1` to turn it off.
 
 ## Errors
 
@@ -118,10 +140,10 @@ API errors raise `SongbrainError` with `.status`, `.code`, `.message` and `.requ
 | Exception | When |
 |---|---|
 | `AuthenticationError` | 401 `missing_api_key`, `invalid_api_key` |
-| `InsufficientCredits` | 402: free songs used up and fewer than 25 credits |
+| `InsufficientCredits` | 402: free songs used up and too few credits (25 for `full`, 10 for `dna`, 15 to add the direction) |
 | `NotFound` | 404: unknown id, or not yours |
 | `RateLimited` | 429, with `.retry_after` in seconds |
-| `AnalysisFailed` | the song was accepted but failed (credits are refunded) |
+| `AnalysisFailed` | the song was accepted but failed (credits are refunded); code `direction_failed` from `add_direction` |
 | `WaitTimeout` | `analyze(wait=True)` gave up; the song keeps processing |
 
 The client retries network errors, 429 and 5xx responses up to 3 times with backoff and honours `Retry-After` (up to 60 s). Song creation is retried too, because it carries an `Idempotency-Key`.
@@ -139,7 +161,7 @@ except RateLimited as e:
 
 ## Webhooks
 
-Pass `webhook_url` and Songbrain POSTs `song.done` or `song.failed` (and `account.low_balance`). Verify the `Songbrain-Signature` header against the raw body:
+Pass `webhook_url` and Songbrain POSTs `song.done` or `song.failed` (and `account.low_balance`). `data.mode` says `full` or `dna`. After `add_direction` a second `song.done` arrives with its own event id and `data.direction_added: True`. Verify the `Songbrain-Signature` header against the raw body:
 
 ```python
 from songbrain import webhooks
@@ -169,7 +191,7 @@ New Spotify apps have had no access to `/audio-features` and `/audio-analysis` s
 
 ## Pricing
 
-5 free songs per account per month. Then 25 credits per song (about $0.50). No subscription. Everything is included: analysis, story and shot plan. Results are yours, also in a paid or white-label product. See [Terms §17](https://www.songbrain.ai/terms#api).
+5 free songs per account per month, in either mode. Then 25 credits per `full` song (about $0.50) or 10 per `dna` song (about $0.20); adding the direction later costs 15 credits (about $0.30). No subscription. A `full` song includes everything: analysis, story and shot plan. Results are yours, also in a paid or white-label product. See [Terms §17](https://www.songbrain.ai/terms#api).
 
 ## Links
 

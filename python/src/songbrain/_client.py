@@ -38,7 +38,9 @@ from .errors import (
 from .types import (
     Account,
     DeleteResult,
+    DirectionCreated,
     ExampleList,
+    Mode,
     Pricing,
     RateLimitInfo,
     Song,
@@ -50,7 +52,7 @@ from .types import (
     WebhookTestResult,
 )
 
-__all__ = ["Songbrain", "DEFAULT_BASE_URL", "SECTIONS", "FileInput", "Include"]
+__all__ = ["Songbrain", "DEFAULT_BASE_URL", "SECTIONS", "FileInput", "Include", "Mode"]
 
 REQUEST_ID_HEADER = "Songbrain-Request-Id"
 IDEMPOTENCY_HEADER = "Idempotency-Key"
@@ -197,6 +199,7 @@ class Songbrain:
         external_ref: Optional[str] = ...,
         filename: Optional[str] = ...,
         lyrics: Optional[str] = ...,
+        mode: Optional[Mode] = ...,
         test: bool = ...,
         idempotency_key: Optional[str] = ...,
         wait: Literal[True] = ...,
@@ -216,6 +219,7 @@ class Songbrain:
         external_ref: Optional[str] = ...,
         filename: Optional[str] = ...,
         lyrics: Optional[str] = ...,
+        mode: Optional[Mode] = ...,
         test: bool = ...,
         idempotency_key: Optional[str] = ...,
         wait: Literal[False],
@@ -234,6 +238,7 @@ class Songbrain:
         external_ref: Optional[str] = None,
         filename: Optional[str] = None,
         lyrics: Optional[str] = None,
+        mode: Optional[Mode] = None,
         test: bool = False,
         idempotency_key: Optional[str] = None,
         wait: bool = True,
@@ -257,6 +262,10 @@ class Songbrain:
             lyrics: Optional lyrics as plain text (up to 20,000 characters), e.g. from Suno. The analysis
                 then uses your exact words on the transcription's timing (``lyrics.source`` becomes
                 ``"provided_lyrics"``); words the singer can't be heard on are left out, never guessed.
+            mode: ``"full"`` (the API default, 25 credits) = Song DNA + video direction (story, shot plan).
+                ``"dna"`` (10 credits) = Song DNA only: song_dna, timeline, best_moments, lyrics and scores,
+                no story and no shot plan. Add the direction later with :meth:`add_direction` (15 credits).
+                ``None`` sends nothing, so the API uses ``"full"``. A free song covers either mode.
             test: Test mode: free, never charged, no audio needed. The song is ``done`` right away and
                 returns the Sugar Rush example analysis with ``livemode: false``. ``song.done`` is still
                 sent to ``webhook_url``. Made for CI and integration tests.
@@ -280,7 +289,7 @@ class Songbrain:
 
         fields: Dict[str, str] = {}
         for key, value in (("title", title), ("artist", artist), ("webhook_url", webhook_url),
-                           ("external_ref", external_ref), ("lyrics", lyrics)):
+                           ("external_ref", external_ref), ("lyrics", lyrics), ("mode", mode)):
             if value is not None:
                 fields[key] = value
         headers = {IDEMPOTENCY_HEADER: idempotency_key or str(uuid.uuid4())}
@@ -314,11 +323,63 @@ class Songbrain:
             AnalysisFailed: The analysis failed.
             WaitTimeout: Not done within ``timeout`` seconds.
         """
+        return self._poll(song_id, poll_interval=poll_interval, timeout=timeout)
+
+    @overload
+    def add_direction(
+        self, song_id: str, *, wait: Literal[True] = ..., poll_interval: float = ..., timeout: float = ...
+    ) -> Song: ...
+
+    @overload
+    def add_direction(
+        self, song_id: str, *, wait: Literal[False], poll_interval: float = ..., timeout: float = ...
+    ) -> DirectionCreated: ...
+
+    def add_direction(
+        self, song_id: str, *, wait: bool = True, poll_interval: float = 5.0, timeout: float = 300.0
+    ) -> Union[Song, DirectionCreated]:
+        """Add the video direction (story + shot plan) to a finished ``mode="dna"`` song.
+
+        ``POST /songs/{id}/direction``: 15 credits (never a free song), refunded automatically if it
+        fails. No new upload: the story and the beat-synced shot plan are built from the existing
+        analysis. Takes about 30-40 seconds; the song is ``processing`` meanwhile and then ``done``
+        again with ``mode: "full"``. Test-mode songs (``test_...``) are upgraded right away, for free.
+
+        Args:
+            song_id: A finished song analysed with ``mode="dna"``.
+            wait: If ``True`` (default), poll until the direction is there and return the full document.
+                If ``False``, return the 202 body (``{id, status: "processing", mode: "full", eta_sec, billing}``).
+            poll_interval: Seconds between status checks while waiting.
+            timeout: Seconds to wait in total before raising :class:`~songbrain.WaitTimeout`.
+
+        Raises:
+            AnalysisFailed: The direction could not be built (code ``direction_failed``). The 15 credits
+                are refunded and the song stays a ``"dna"`` song.
+            InsufficientCredits: 402, fewer than 15 credits.
+            SongbrainError: 409 ``direction_included`` (already ``"full"``), ``not_done`` (still processing),
+                ``song_failed`` or ``direction_in_progress``; 404 for an unknown or deleted song.
+            WaitTimeout: Not done within ``timeout``. The direction keeps building on the server.
+        """
+        created = self._request("POST", f"/songs/{quote(song_id, safe='')}/direction")
+        if not wait:
+            return cast(DirectionCreated, created)
+        return self._poll(song_id, poll_interval=poll_interval, timeout=timeout, direction=True)
+
+    def _poll(self, song_id: str, *, poll_interval: float, timeout: float, direction: bool = False) -> Song:
         deadline = time.monotonic() + timeout
         interval = max(0.5, float(poll_interval))
         while True:
             doc = self.get_song(song_id)
             status = doc.get("status")
+            if status == "done" and direction and doc.get("mode") == "dna":
+                # The upgrade failed: the API refunded the credits and set the song back to "dna".
+                raise AnalysisFailed(
+                    song_id,
+                    "direction_failed",
+                    "The video direction could not be added. The 15 credits were refunded automatically; "
+                    "the Song DNA is unchanged.",
+                    cast(Dict[str, Any], doc),
+                )
             if status == "done":
                 return doc
             if status == "failed":
@@ -346,7 +407,11 @@ class Songbrain:
         return cast(Song, self._request("GET", f"/songs/{quote(song_id, safe='')}", params=params))
 
     def shot_plan(self, song_id: str) -> SongShotPlan:
-        """Get only the story and the shot plan of a song: ``{id, status, song, story, shot_plan}``."""
+        """Get only the story and the shot plan of a song: ``{id, status, song, story, shot_plan}``.
+
+        A ``mode="dna"`` song has no shot plan: the API answers 409 ``no_direction`` (the error body's
+        ``direction`` says how to add it). See :meth:`add_direction`.
+        """
         return cast(SongShotPlan, self._request("GET", f"/songs/{quote(song_id, safe='')}/shot-plan"))
 
     def list_songs(self, limit: int = 20, starting_after: Optional[str] = None) -> SongList:
@@ -380,7 +445,7 @@ class Songbrain:
 
     # ── account ────────────────────────────────────────────────────────────
     def account(self) -> Account:
-        """Free songs left this month, credit balance and price per song."""
+        """Free songs left this month, credit balance and prices (``prices``: full, dna, add_direction)."""
         return cast(Account, self._request("GET", "/account"))
 
     def pricing(self) -> Pricing:
@@ -409,9 +474,18 @@ class Songbrain:
         """List the example analyses (Songbrain's own songs). No key needed."""
         return cast(ExampleList, self._request("GET", "/examples"))
 
-    def example(self, example_id: str, view: Optional[str] = None, include: Optional[Include] = None) -> Song:
-        """A full example document, in exactly the format of :meth:`get_song`. No key needed."""
-        params = {"view": view, "include": _join_include(include)}
+    def example(
+        self,
+        example_id: str,
+        view: Optional[str] = None,
+        include: Optional[Include] = None,
+        mode: Optional[Mode] = None,
+    ) -> Song:
+        """A full example document, in exactly the format of :meth:`get_song`. No key needed.
+
+        ``mode="dna"`` returns what a Song DNA-only song looks like: no story, no shot plan, a ``direction`` offer.
+        """
+        params = {"view": view, "include": _join_include(include), "mode": mode}
         return cast(Song, self._request("GET", f"/examples/{quote(example_id, safe='')}", params=params))
 
     def example_shot_plan(self, example_id: str) -> SongShotPlan:

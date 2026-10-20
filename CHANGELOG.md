@@ -4,6 +4,23 @@ All notable changes to the Songbrain SDKs in this repository. The format follows
 
 The Python package (`songbrain` on PyPI, tags `py-v*`) and the npm package (`songbrain` on npm, tags `js-v*`) are released together when they share a version. Changes to the API itself are in the [API changelog](https://www.songbrain.ai/docs/api/changelog).
 
+## [0.4.0] - 2026-10-20
+
+For API 1.3. Backwards compatible with 0.3.x code: without `mode`, songs are `full` as before.
+
+### Added
+
+- **Two modes.** `analyze(..., mode="dna")` / `analyze({ ..., mode: "dna" })` returns the Song DNA only (`song_dna`, `timeline`, `best_moments`, `lyrics`, `scores`; no `story`, no `shot_plan`) for 10 credits (about $0.20). `mode="full"` is the API default: Song DNA + video direction, 25 credits (about $0.50). Without `mode` the SDK sends nothing and the API uses `full`. A free song covers either mode.
+- **Add the video direction later.** `add_direction(song_id)` / `addDirection(songId)` calls `POST /v1/songs/{id}/direction` (15 credits, about $0.30, never a free song) and waits until the song is `done` again with `story` and `shot_plan` (about 30–40 s). `wait=False` / `{ wait: false }` returns the 202 body. If the direction fails, the API refunds the credits, the song stays `dna`, and the SDK raises `AnalysisFailed` with code `direction_failed`. API errors: 409 `direction_included`, `not_done`, `song_failed`, `direction_in_progress`; 402 `insufficient_credits`. Test-mode songs upgrade right away, for free.
+- `example(id, mode="dna")` / `example(id, { mode: "dna" })` shows what a Song DNA-only song looks like. No key needed.
+- **Types for API 1.3:** `Mode` (`"full" | "dna"`); `mode` and `direction` (`DirectionOffer`) on songs; `mode` on `SongCreated` and list items; `DirectionCreated` (the 202 body of the direction call); `prices` on `Account`; `modes`, `add_direction` and `free_songs_cover` on `Pricing`, with `Price`, `ModePrice` and `AddDirectionPrice`. `price_per_song_*` still means `full`.
+- Webhook docs: every `song.*` event has `data.mode`; `shot_plan_url` is only set for `full` songs; after an upgrade a second `song.done` arrives with its own event id and `data.direction_added: true`.
+- Postman: `mode` on the create requests and an **Add video direction** request.
+
+### Changed
+
+- `shot_plan()` / `shotPlan()` docs: a `dna` song answers 409 `no_direction`, and the error body's `direction` says how to add it.
+
 ## [0.3.3] - 2026-10-19
 
 ### Added

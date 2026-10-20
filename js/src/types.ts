@@ -9,6 +9,13 @@
 
 export type SongStatus = "processing" | "done" | "failed";
 
+/**
+ * What a song includes. "full" (the default): Song DNA + video direction (story,
+ * shot plan), 25 credits. "dna": Song DNA only (song_dna, timeline, best_moments,
+ * lyrics, scores), 10 credits. Add the direction to a dna song later for 15 credits.
+ */
+export type Mode = "full" | "dna";
+
 /** One of the sections a song document has. Use with `include`. */
 export type SectionName =
   | "song_dna"
@@ -348,9 +355,23 @@ export interface ErrorInfo {
   request_id?: string;
 }
 
+/** On a "dna" song: how to add the video direction (story + shot plan) later. */
+export interface DirectionOffer {
+  included: false;
+  /** "POST https://api.songbrain.ai/v1/songs/{id}/direction" */
+  add: string;
+  /** 15 */
+  credits: number;
+  /** 0.3 */
+  usd: number;
+  /** ["story", "shot_plan"] */
+  adds: SectionName[];
+}
+
 /**
- * The song document. While processing, only `id`, `status`, `progress` and
- * `eta_sec` are set. With `include`, only the named sections are present.
+ * The song document. While processing, only `id`, `status`, `progress`,
+ * `eta_sec` and `mode` are set. With `include`, only the named sections are
+ * present. A "dna" song has no `story` and no `shot_plan`; it has `direction`.
  */
 export interface Song {
   object: "song";
@@ -376,6 +397,10 @@ export interface Song {
   livemode?: boolean;
   /** Measured vs. transcribed vs. model estimate vs. generated. */
   provenance?: Provenance;
+  /** "full" or "dna" (API 1.3). */
+  mode?: Mode;
+  /** Only on "dna" songs: how to add the story and shot plan. */
+  direction?: DirectionOffer;
 }
 
 /** The 202 body of POST /songs. */
@@ -383,9 +408,23 @@ export interface SongCreated {
   object: "song";
   id: string;
   status: "processing";
+  mode?: Mode;
   eta_sec: number;
   billing: Billing;
   external_ref?: string | null;
+  url: string;
+  livemode?: boolean;
+}
+
+/** The 202 body of POST /songs/{id}/direction. */
+export interface DirectionCreated {
+  object: "song";
+  id: string;
+  /** "processing"; "done" right away for a test-mode song. */
+  status: "processing" | "done";
+  mode: "full";
+  eta_sec: number;
+  billing: Billing;
   url: string;
   livemode?: boolean;
 }
@@ -402,6 +441,7 @@ export interface SongShotPlan {
 export interface SongListItem {
   id: string;
   status: string;
+  mode?: Mode;
   external_ref: string | null;
   created_at: string | null;
   billing: Billing;
@@ -442,13 +482,35 @@ export interface ExampleList {
   data: ExampleSummary[];
 }
 
+export interface Price {
+  credits: number;
+  usd: number;
+}
+
+export interface ModePrice extends Price {
+  name: string;
+  /** Section names the mode returns. */
+  includes: SectionName[];
+  default?: boolean;
+}
+
+export interface AddDirectionPrice extends Price {
+  /** "POST /v1/songs/{id}/direction" */
+  endpoint: string;
+  note?: string;
+}
+
 export interface Account {
   credits: number;
   free_songs_per_month: number;
   free_songs_used: number;
   free_songs_left: number;
+  /** Mode "full". */
   price_per_song_credits: number;
+  /** Mode "full". */
   price_per_song_usd: number;
+  /** Price per mode (API 1.3). */
+  prices?: { full: Price; dna: Price; add_direction: Price };
   songs_this_month: number;
   buy_credits_url: string;
   songs_left_from_credits?: number;
@@ -459,8 +521,16 @@ export interface Account {
 
 export interface Pricing {
   free_songs_per_month: number;
+  /** "either mode" */
+  free_songs_cover?: string;
+  /** Mode "full". */
   price_per_song_credits: number;
+  /** Mode "full". */
   price_per_song_usd: number;
+  /** API 1.3. */
+  modes?: { full: ModePrice; dna: ModePrice };
+  /** API 1.3: story + shot plan for a finished dna song. */
+  add_direction?: AddDirectionPrice;
   credit_packs: { credits: number; usd: number }[];
   included_per_song: string[];
   volume: string;
@@ -468,7 +538,12 @@ export interface Pricing {
   examples_are_free: boolean;
 }
 
-/** A webhook event body. */
+/**
+ * A webhook event body. For song.* events `data` has `id`, `status`, `mode`,
+ * `external_ref`, `url`, and `shot_plan_url` for "full" songs only. After
+ * `addDirection` a second `song.done` arrives with its own `id` and
+ * `data.direction_added: true`.
+ */
 export interface WebhookEvent<T = Record<string, unknown>> {
   /** "evt_…". Stays the same across retries of one event: dedupe on it. */
   id: string;

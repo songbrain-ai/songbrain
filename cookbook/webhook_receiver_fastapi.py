@@ -67,6 +67,11 @@ def forget(event_id: str) -> None:
 
 def on_song_done(data: Dict[str, Any], livemode: bool) -> None:
     song_id = data["id"]
+    if data.get("mode") == "dna":
+        # Song DNA only: no shot plan. Fetch sb.get_song(song_id), or add the direction with
+        # sb.add_direction(song_id); a second song.done then arrives with direction_added: true.
+        log.info("song.done %s ref=%s livemode=%s: Song DNA only", song_id, data.get("external_ref"), livemode)
+        return
     plan = sb.shot_plan(song_id)  # or sb.get_song(song_id) for the full document
     scenes = ((plan.get("shot_plan") or {}).get("clip") or {}).get("scenes") or []
     log.info("song.done %s ref=%s livemode=%s: %d scenes", song_id, data.get("external_ref"), livemode, len(scenes))

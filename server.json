@@ -3,7 +3,7 @@
   "name": "io.github.songbrain-ai/songbrain",
   "title": "Songbrain",
   "description": "Best moments + video-gen prompts per scene, beats, tempo, key. Spotify Audio Features alternative.",
-  "version": "1.0.0",
+  "version": "1.0.4",
   "websiteUrl": "https://www.songbrain.ai/docs/api",
   "repository": {
     "url": "https://github.com/songbrain-ai/songbrain",

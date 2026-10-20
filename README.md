@@ -131,13 +131,43 @@ for (const s of song.shot_plan?.clip?.scenes ?? []) {
 
 `analyze()` uploads, waits until the song is done and returns the full document. Pass `wait=False` (Python) or `wait: false` (JS) to get the id right away, then use a webhook or `get_song` / `getSong` later.
 
+## Two modes
+
+Every song is analysed in one of two modes. Use `dna` when you only need the data, or to sort many songs first. Then add the video direction to the ones you pick. `dna` plus the direction costs the same as `full`.
+
+| Mode | What you get | Price |
+|---|---|---|
+| `dna` | Song DNA: `song_dna`, `timeline`, `best_moments`, `lyrics`, `scores`. No story, no shot plan | 10 credits, about $0.20 |
+| `full` (default) | Song DNA + video direction: `story` and a beat-synced `shot_plan` with a prompt per scene | 25 credits, about $0.50 |
+| Add direction later | `story` + `shot_plan` for a finished `dna` song. No new upload | 15 credits, about $0.30 |
+
+```python
+song = sb.analyze("song.mp3", mode="dna")       # 10 credits: no story, no shot plan
+if song["scores"]["virality"]["score"] >= 80:
+    song = sb.add_direction(song["id"])         # +15 credits, waits about 30-40 s
+    print(song["shot_plan"]["clip"]["scenes"][0]["prompt"])
+```
+
+```ts
+let song = await sb.analyze({ file: "song.mp3", mode: "dna" }); // 10 credits: no story, no shot plan
+if ((song.scores?.virality.score ?? 0) >= 80) {
+  song = await sb.addDirection(song.id);                        // +15 credits, waits about 30-40 s
+  console.log(song.shot_plan?.clip?.scenes[0]?.prompt);
+}
+```
+
+The 5 free songs a month cover either mode. Adding the direction never uses a free song. If it fails, the 15 credits are refunded and the song stays `dna`. `GET /v1/songs/{id}/shot-plan` on a `dna` song answers 409 `no_direction`.
+
+Without an SDK: send `"mode": "dna"` in the JSON body (or `-F "mode=dna"` with an upload), then `POST /v1/songs/{id}/direction`. Try the `dna` view without a key: `GET https://api.songbrain.ai/v1/examples/sugar-rush?mode=dna`.
+
 ## SDK methods
 
 Python uses snake_case and JS uses camelCase method names. Response fields are the API's own names in both.
 
 | Python | JavaScript | API | Key |
 |---|---|---|---|
-| `analyze(file \| audio_url=…, test=False, idempotency_key=None, wait=True)` | `analyze({ file \| audioUrl, test, idempotencyKey, wait })` | `POST /v1/songs` + polling | yes |
+| `analyze(file \| audio_url=…, mode=None, test=False, idempotency_key=None, wait=True)` | `analyze({ file \| audioUrl, mode, test, idempotencyKey, wait })` | `POST /v1/songs` + polling | yes |
+| `add_direction(id, wait=True)` | `addDirection(id, { wait })` | `POST /v1/songs/{id}/direction` + polling | yes |
 | `get_song(id, view, include)` | `getSong(id, { view, include })` | `GET /v1/songs/{id}` | yes |
 | `shot_plan(id)` | `shotPlan(id)` | `GET /v1/songs/{id}/shot-plan` | yes |
 | `list_songs(limit, starting_after)` | `listSongs({ limit, startingAfter })` | `GET /v1/songs` | yes |
@@ -148,7 +178,7 @@ Python uses snake_case and JS uses camelCase method names. Response fields are t
 | `webhook_deliveries(limit)` | `webhookDeliveries({ limit })` | `GET /v1/webhooks/deliveries` | yes |
 | `pricing()` | `pricing()` | `GET /v1/pricing` | no |
 | `examples()` | `examples()` | `GET /v1/examples` | no |
-| `example(id, view, include)` | `example(id, { view, include })` | `GET /v1/examples/{id}` | no |
+| `example(id, view, include, mode)` | `example(id, { view, include, mode })` | `GET /v1/examples/{id}` | no |
 | `example_shot_plan(id)` | `exampleShotPlan(id)` | `GET /v1/examples/{id}/shot-plan` | no |
 | `webhooks.verify(body, header, secret)` | `verifyWebhook(body, header, secret)` | `Songbrain-Signature` header | – |
 
@@ -233,15 +263,17 @@ Requests with a key return `X-RateLimit-Limit` (requests per minute, currently 1
 
 ## User-Agent and coding agents
 
-The SDKs send `songbrain-python/<version>` or `songbrain-js/<version>` as User-Agent. Since 0.3.3, inside a coding agent's shell (Claude Code, Cursor, Gemini CLI, Codex, opencode, Augment) they append the agent's name, for example `songbrain-js/0.3.3 (agent: claude-code)`. The name comes from environment variables those tools set themselves (`AI_AGENT`, `CLAUDECODE`, `CURSOR_AGENT` …); nothing else from your environment is sent. Browsers never send it. Set `SONGBRAIN_NO_AGENT_HINT=1` to turn it off.
+The SDKs send `songbrain-python/<version>` or `songbrain-js/<version>` as User-Agent. Since 0.3.3, inside a coding agent's shell (Claude Code, Cursor, Gemini CLI, Codex, opencode, Augment) they append the agent's name, for example `songbrain-js/0.4.0 (agent: claude-code)`. The name comes from environment variables those tools set themselves (`AI_AGENT`, `CLAUDECODE`, `CURSOR_AGENT` …); nothing else from your environment is sent. Browsers never send it. Set `SONGBRAIN_NO_AGENT_HINT=1` to turn it off.
 
 ## Webhooks
 
 Pass `webhook_url` when you create a song. Songbrain POSTs `song.done` or `song.failed`, and `account.low_balance` when you run low:
 
 ```json
-{"id": "evt_…", "type": "song.done", "created": 1791200000, "livemode": true, "data": {"id": "…", "status": "done", "external_ref": "…"}}
+{"id": "evt_…", "type": "song.done", "created": 1791200000, "livemode": true, "data": {"id": "…", "status": "done", "mode": "full", "external_ref": "…"}}
 ```
+
+Every `song.*` event has `data.mode`. `data.shot_plan_url` is only there for `full` songs. When you add the direction to a `dna` song, a second `song.done` arrives with its own event id and `data.direction_added: true`.
 
 - **Signature.** Every webhook has the header `Songbrain-Signature: t=<unix>,v1=<hex>`. `v1` is the HMAC-SHA256 of `"<t>.<raw body>"` with your key's webhook secret. Both SDKs verify it for you (`webhooks.verify` / `verifyWebhook`).
 - **Dedupe on the event id.** `id` (also in the `Songbrain-Event-Id` header) stays the same when an event is retried. Store the ids you have handled and answer 2xx to repeats.
@@ -252,7 +284,7 @@ Receivers: [cookbook/webhook_receiver_fastapi.py](cookbook/webhook_receiver_fast
 
 ## MCP
 
-Songbrain runs a remote MCP server at `https://api.songbrain.ai/v1/mcp` (streamable HTTP). It works in Claude Code, Claude Desktop, Cursor and other MCP clients. Without a key you get the example tools. With a key you can analyse songs from a URL.
+Songbrain runs a remote MCP server at `https://api.songbrain.ai/v1/mcp` (streamable HTTP). It works in Claude Code, Claude Desktop, Cursor and other MCP clients. Without a key you get the example tools. With a key you can analyse songs from a URL (`analyze_song`, with an optional `mode`) and add the video direction to a `dna` song (`add_video_direction`).
 
 ```bash
 claude mcp add --transport http songbrain https://api.songbrain.ai/v1/mcp \
@@ -291,9 +323,9 @@ Import [postman/Songbrain.postman_collection.json](postman/Songbrain.postman_col
 
 ## Pricing
 
-- 5 free songs per account per month.
-- Then 25 credits per song, about $0.50. Credits come in packs (500 credits = $10, 150 credits = $4.99).
-- No subscription. Everything is included in that price: analysis, story and shot plan.
+- 5 free songs per account per month, in either mode.
+- Then credits: 25 per `full` song (about $0.50), 10 per `dna` song (about $0.20), 15 to add the direction to a `dna` song later (about $0.30). Credits come in packs (500 credits = $10, 150 credits = $4.99).
+- No subscription. A `full` song includes everything: analysis, story and shot plan. See [Two modes](#two-modes).
 - Limits: files up to 100 MB, 30 s to 10 min; 3 songs in parallel; 200 songs per 24 h; 120 requests per minute per key.
 - Over 1,000 songs a month, an invoice, a DPA or an SLA: support@songbrain.ai.
 

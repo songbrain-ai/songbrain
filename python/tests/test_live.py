@@ -61,3 +61,11 @@ def test_unknown_example_is_not_found(sb):
     with pytest.raises(NotFound) as ei:
         sb.example("does-not-exist")
     assert ei.value.code == "not_found"
+
+
+def test_example_dna_mode(sb):
+    doc = sb.example("sugar-rush", mode="dna")
+    assert doc["mode"] == "dna"
+    assert doc["song_dna"]["tempo_bpm"] > 0
+    assert "story" not in doc and "shot_plan" not in doc
+    assert doc["direction"]["included"] is False and doc["direction"]["credits"] == 15

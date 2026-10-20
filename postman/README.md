@@ -1,6 +1,6 @@
 # Postman collection
 
-[`Songbrain.postman_collection.json`](Songbrain.postman_collection.json) (Collection v2.1) has every v1 endpoint: examples, songs (create from URL, upload, test mode), get, shot plan, list with cursor, delete, account, pricing, status, and webhook test ping and delivery log.
+[`Songbrain.postman_collection.json`](Songbrain.postman_collection.json) (Collection v2.1) has every v1 endpoint: examples, songs (create from URL, upload, test mode, `mode` full or dna), get, shot plan, add video direction, list with cursor, delete, account, pricing, status, and webhook test ping and delivery log.
 
 1. Postman → Import → pick the file.
 2. Set the collection variable `apiKey` to your key (`sb_live_…`). Examples, Pricing and Status work without it.

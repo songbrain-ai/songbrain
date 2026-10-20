@@ -8,6 +8,8 @@ export type {
   AnalyzeOptions,
   WaitOptions,
   GetSongOptions,
+  ExampleOptions,
+  AddDirectionOptions,
   ListSongsOptions,
   IterSongsOptions,
   FileInput,

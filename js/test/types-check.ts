@@ -4,6 +4,11 @@ import {
   SongbrainError,
   constructWebhookEvent,
   verifyWebhook,
+  type Account,
+  type DirectionCreated,
+  type DirectionOffer,
+  type Mode,
+  type Pricing,
   type RateLimitInfo,
   type Scene,
   type Song,
@@ -41,4 +46,25 @@ export async function typeChecks(sb: Songbrain): Promise<void> {
   const eventId: string = event.id;
   const errId: string | null = new SongbrainError(400, "x", "y").requestId;
   void [live, cursor, ping, deliveries, rl, rid, eventId, errId];
+
+  // API 1.3: modes and the video direction
+  const mode: Mode = "dna";
+  const dna: Song = await sb.analyze({ audioUrl: "https://example.com/a.mp3", mode });
+  const songMode: Mode | undefined = dna.mode;
+  const offer: DirectionOffer | undefined = dna.direction;
+  const full: Song = await sb.addDirection(dna.id);
+  const fullAgain: Song = await sb.addDirection(dna.id, { pollIntervalMs: 2_000, timeoutMs: 60_000 });
+  const accepted: DirectionCreated = await sb.addDirection(dna.id, { wait: false });
+  const acceptedMode: "full" = accepted.mode;
+  // @ts-expect-error  wait:false returns the 202 body, not the full document
+  const noPlan = accepted.shot_plan;
+  // @ts-expect-error  only "full" and "dna" are modes
+  await sb.analyze({ audioUrl: "https://example.com/a.mp3", mode: "story" });
+  const exampleDna: Song = await sb.example("sugar-rush", { mode: "dna", view: "summary" });
+  const account: Account = await sb.account();
+  const dnaUsd: number | undefined = account.prices?.dna.usd;
+  const pricing: Pricing = await sb.pricing();
+  const addCredits: number | undefined = pricing.add_direction?.credits;
+  const fullIncludes: string[] | undefined = pricing.modes?.full.includes;
+  void [songMode, offer, full, fullAgain, acceptedMode, noPlan, exampleDna, dnaUsd, addCredits, fullIncludes];
 }

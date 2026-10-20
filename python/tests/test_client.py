@@ -323,6 +323,138 @@ def test_no_test_flag_by_default():
     assert "test" not in sess.calls[0][2]["json"]
 
 
+# -- modes and video direction ------------------------------------------------
+
+
+def test_mode_is_sent_with_url_and_with_upload():
+    created = {"id": "s1", "status": "processing", "mode": "dna", "billing": {"type": "credits", "credits": 10}}
+    sb, sess = _client([_resp(202, created), _resp(202, {"id": "s2", "mode": "dna"})])
+    out = sb.analyze(audio_url="https://x/a.mp3", mode="dna", wait=False)
+    assert out["mode"] == "dna"
+    assert sess.calls[0][2]["json"] == {"audio_url": "https://x/a.mp3", "mode": "dna"}
+    sb.analyze(b"ID3" + bytes(32), mode="dna", wait=False)
+    assert sess.calls[1][2]["data"] == {"mode": "dna"}
+
+
+def test_no_mode_by_default_and_full_is_sent_when_asked():
+    sb, sess = _client([_resp(202, {"id": "a"}), _resp(202, {"id": "b"}), _resp(202, {"id": "c"})])
+    sb.analyze(audio_url="https://x/a.mp3", wait=False)
+    assert "mode" not in sess.calls[0][2]["json"]
+    sb.analyze(audio_url="https://x/a.mp3", mode="full", wait=False)
+    assert sess.calls[1][2]["json"]["mode"] == "full"
+    sb.analyze(test=True, mode="dna", wait=False)
+    assert sess.calls[2][2]["json"] == {"mode": "dna", "test": True}
+
+
+def test_analyze_dna_waits_like_full():
+    dna_doc = {
+        "id": "s1",
+        "status": "done",
+        "mode": "dna",
+        "song_dna": {"tempo_bpm": 120.0},
+        "direction": {"included": False, "credits": 15, "usd": 0.3, "adds": ["story", "shot_plan"]},
+    }
+    sb, _ = _client([_resp(202, {"id": "s1", "mode": "dna"}), _resp(body={"id": "s1", "status": "processing", "mode": "dna"}),
+                     _resp(body=dna_doc)])
+    doc = sb.analyze(audio_url="https://x/a.mp3", mode="dna", poll_interval=1)
+    assert doc["mode"] == "dna" and doc["direction"]["credits"] == 15 and "shot_plan" not in doc
+
+
+def test_add_direction_posts_and_polls_until_full():
+    accepted = {"object": "song", "id": "s1", "status": "processing", "mode": "full", "eta_sec": 30,
+                "billing": {"type": "credits", "credits": 15}, "url": "https://api.songbrain.ai/v1/songs/s1"}
+    full = {"id": "s1", "status": "done", "mode": "full", "story": {"world": "w"}, "shot_plan": {"status": "ready"}}
+    sb, sess = _client([
+        _resp(202, accepted),
+        _resp(body={"id": "s1", "status": "processing", "progress": 0.97, "mode": "full"}),
+        _resp(body=full),
+    ])
+    doc = sb.add_direction("s1", poll_interval=1)
+    assert doc["mode"] == "full" and doc["shot_plan"]["status"] == "ready"
+    method, url, kw = sess.calls[0]
+    assert method == "POST" and url == "https://api.songbrain.ai/v1/songs/s1/direction"
+    assert kw["json"] is None and kw["data"] is None and kw["files"] is None
+    assert "Idempotency-Key" not in kw["headers"]
+    gets = [c for c in sess.calls if c[0] == "GET"]
+    assert len(gets) == 2 and all(c[1] == "https://api.songbrain.ai/v1/songs/s1" for c in gets)
+    assert ("sleep", 1.0, {}) in sess.calls
+
+
+def test_add_direction_no_wait_returns_202_body():
+    accepted = {"id": "test_1", "status": "done", "mode": "full", "eta_sec": 0, "billing": {"type": "test", "credits": 0}}
+    sb, sess = _client([_resp(202, accepted)])
+    out = sb.add_direction("test_1", wait=False)
+    assert out == accepted
+    assert len(sess.calls) == 1
+    assert sess.calls[0][1].endswith("/songs/test_1/direction")
+
+
+def test_add_direction_quotes_the_id():
+    sb, sess = _client([_resp(202, {"id": "a/b"})])
+    sb.add_direction("a/b", wait=False)
+    assert sess.calls[0][1].endswith("/songs/a%2Fb/direction")
+
+
+def test_add_direction_failure_is_analysis_failed():
+    back_to_dna = {"id": "s1", "status": "done", "mode": "dna", "direction": {"included": False}}
+    sb, _ = _client([_resp(202, {"id": "s1", "status": "processing", "mode": "full"}), _resp(body=back_to_dna)])
+    with pytest.raises(AnalysisFailed) as ei:
+        sb.add_direction("s1")
+    assert ei.value.code == "direction_failed" and ei.value.song_id == "s1"
+    assert ei.value.body["mode"] == "dna"
+
+
+@pytest.mark.parametrize(
+    "status,code,cls",
+    [
+        (409, "direction_included", SongbrainError),
+        (409, "not_done", SongbrainError),
+        (409, "song_failed", SongbrainError),
+        (409, "direction_in_progress", SongbrainError),
+        (402, "insufficient_credits", InsufficientCredits),
+        (404, "not_found", NotFound),
+    ],
+)
+def test_add_direction_errors_are_raised_without_retry(status, code, cls):
+    sb, sess = _client([_resp(status, {"error": {"code": code, "message": "x"}})])
+    with pytest.raises(cls) as ei:
+        sb.add_direction("s1")
+    assert ei.value.status == status and ei.value.code == code
+    assert len(sess.calls) == 1
+
+
+def test_shot_plan_of_a_dna_song_is_409_no_direction():
+    body = {"error": {"code": "no_direction", "message": "x"}, "direction": {"included": False, "credits": 15}}
+    sb, _ = _client([_resp(409, body)])
+    with pytest.raises(SongbrainError) as ei:
+        sb.shot_plan("s1")
+    assert ei.value.code == "no_direction"
+    assert ei.value.body["direction"]["credits"] == 15
+
+
+def test_example_with_mode_dna():
+    sb, sess = _client([_resp(body={"id": "sugar-rush", "mode": "dna"}), _resp(body={"id": "sugar-rush"})])
+    assert sb.example("sugar-rush", mode="dna")["mode"] == "dna"
+    assert sess.calls[0][1].endswith("/examples/sugar-rush")
+    assert sess.calls[0][2]["params"] == {"mode": "dna"}
+    sb.example("sugar-rush")
+    assert sess.calls[1][2]["params"] is None
+
+
+def test_mode_type_is_exported():
+    from typing import get_args
+
+    assert set(get_args(songbrain.Mode)) == {"full", "dna"}
+    assert songbrain.types.Mode is songbrain.Mode
+    for name in ("DirectionOffer", "DirectionCreated", "Price", "AccountPrices", "ModePrice", "PricingModes",
+                 "AddDirectionPrice"):
+        assert name in songbrain.types.__all__
+    assert {"mode", "direction"} <= set(songbrain.types.Song.__annotations__)
+    assert "mode" in songbrain.types.SongCreated.__annotations__
+    assert "prices" in songbrain.types.Account.__annotations__
+    assert {"modes", "add_direction"} <= set(songbrain.types.Pricing.__annotations__)
+
+
 # -- request ids and rate limits ----------------------------------------------
 
 

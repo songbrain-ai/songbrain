@@ -19,8 +19,9 @@ https://api.songbrain.ai/v1/mcp
 | `get_example_analysis` | no | An example document (summary view by default) |
 | `get_example_shot_plan` | no | An example story and shot plan, with prompts |
 | `get_pricing` | no | Prices and limits |
-| `analyze_song` | yes | Start an analysis from a public audio URL |
+| `analyze_song` | yes | Start an analysis from a public audio URL. Optional `mode`: `full` (default, 25 credits) or `dna` (Song DNA only, 10 credits) |
 | `get_song` | yes | Status, then the document |
+| `add_video_direction` | yes | Add the story and shot plan to a finished `dna` song (15 credits), then poll `get_song` |
 | `get_account` | yes | Free songs left, credits |
 
 Over MCP, songs come from a public URL (`analyze_song`). To upload local files, use the API or an SDK.

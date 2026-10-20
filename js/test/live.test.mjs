@@ -46,3 +46,13 @@ test("live: pricing", { skip }, async () => {
 test("live: unknown example is NotFound", { skip }, async () => {
   await assert.rejects(sb.example("does-not-exist"), (e) => e instanceof NotFound && e.code === "not_found");
 });
+
+test("live: example in mode dna", { skip }, async () => {
+  const doc = await sb.example("sugar-rush", { mode: "dna" });
+  assert.equal(doc.mode, "dna");
+  assert.ok(doc.song_dna.tempo_bpm > 0);
+  assert.equal(doc.story, undefined);
+  assert.equal(doc.shot_plan, undefined);
+  assert.equal(doc.direction.included, false);
+  assert.equal(doc.direction.credits, 15);
+});
